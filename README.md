@@ -136,9 +136,16 @@ Services with no configured instances register no tools at all, so the advertise
 
 ### Planned
 
-Bazarr, Jellyseerr, Maintainerr, Cleanuparr, Notifiarr and Jellyfin. Each is
-described by a `ServiceSpec` rather than a bespoke client, so they share the
-transport, the instance registry and the permission model.
+Bazarr, Maintainerr, Cleanuparr and Notifiarr. Each is described by a
+`ServiceSpec` rather than a bespoke client, so they share the transport, the
+instance registry and the permission model.
+
+### Not planned: media servers and request managers
+
+Scope is limited to the **\*arr-named** applications, which share a common API
+contract — that shared shape is what makes each one a `ServiceSpec` entry
+rather than a new client. Jellyfin, Jellyseerr, Overseerr and Plex are out of
+scope, as are the download clients below.
 
 ### Not planned: download clients (NZBGet, SABnzbd, qBittorrent)
 
