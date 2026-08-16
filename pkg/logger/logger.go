@@ -56,7 +56,7 @@ func New(level string, prefix string) *Logger {
 	return &Logger{
 		level:  l,
 		prefix: prefix,
-		writer: os.Stdout,
+		writer: os.Stderr,
 	}
 }
 
@@ -123,24 +123,4 @@ var defaultLogger = New("info", "ARR-MCP")
 // SetDefaultLevel sets the level of the default logger
 func SetDefaultLevel(level string) {
 	defaultLogger.SetLevel(level)
-}
-
-// Debug logs a debug message using the default logger
-func Debug(format string, args ...interface{}) {
-	defaultLogger.Debug(format, args...)
-}
-
-// Info logs an info message using the default logger
-func Info(format string, args ...interface{}) {
-	defaultLogger.Info(format, args...)
-}
-
-// Warn logs a warning message using the default logger
-func Warn(format string, args ...interface{}) {
-	defaultLogger.Warn(format, args...)
-}
-
-// Error logs an error message using the default logger
-func Error(format string, args ...interface{}) {
-	defaultLogger.Error(format, args...)
 }
