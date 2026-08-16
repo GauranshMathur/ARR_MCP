@@ -49,6 +49,12 @@ var (
 	RadarrSpec = ServiceSpec{Name: "radarr", BasePath: "/api/v3", StatusPath: "/system/status", Auth: AuthHeaderKey}
 	// ProwlarrSpec describes Prowlarr's v1 API, which differs from Sonarr/Radarr.
 	ProwlarrSpec = ServiceSpec{Name: "prowlarr", BasePath: "/api/v1", StatusPath: "/system/status", Auth: AuthHeaderKey}
+	// BazarrSpec describes Bazarr, which serves /api and wants an uppercased
+	// X-API-KEY header rather than the X-Api-Key the *arr apps use.
+	BazarrSpec = ServiceSpec{
+		Name: "bazarr", BasePath: "/api", StatusPath: "/system/status",
+		Auth: AuthHeaderKey, AuthHeader: "X-API-KEY",
+	}
 )
 
 // Credentials carries the secrets for whichever auth scheme a spec selects.
@@ -175,14 +181,20 @@ func (c *Client) Get(ctx context.Context, path string, q ...Query) ([]byte, erro
 	return c.do(ctx, http.MethodGet, path, nil, first(q))
 }
 
-// Post performs a POST request with a JSON body.
-func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, path, body, nil)
+// Post performs a POST request with a JSON body and optional query parameters.
+func (c *Client) Post(ctx context.Context, path string, body any, q ...Query) ([]byte, error) {
+	return c.do(ctx, http.MethodPost, path, body, first(q))
 }
 
-// Put performs a PUT request with a JSON body.
-func (c *Client) Put(ctx context.Context, path string, body any) ([]byte, error) {
-	return c.do(ctx, http.MethodPut, path, body, nil)
+// Put performs a PUT request with a JSON body and optional query parameters.
+func (c *Client) Put(ctx context.Context, path string, body any, q ...Query) ([]byte, error) {
+	return c.do(ctx, http.MethodPut, path, body, first(q))
+}
+
+// Patch performs a PATCH request. Bazarr drives its mutations entirely through
+// query parameters, so body may be nil.
+func (c *Client) Patch(ctx context.Context, path string, body any, q ...Query) ([]byte, error) {
+	return c.do(ctx, http.MethodPatch, path, body, first(q))
 }
 
 // Delete performs a DELETE request.

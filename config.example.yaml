@@ -49,3 +49,13 @@ services:
     - name: main
       url: http://192.168.10.18:9696
       apiKey: ${PROWLARR_API_KEY}
+
+  # Bazarr often runs doubled, one per Sonarr/Radarr pair.
+  bazarr:
+    - name: tv
+      url: http://192.168.10.16:6767
+      apiKey: ${BAZARR_TV_API_KEY}
+      default: true
+    - name: movies
+      url: http://192.168.10.17:6767
+      apiKey: ${BAZARR_MOVIES_API_KEY}

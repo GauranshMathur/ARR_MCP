@@ -126,6 +126,20 @@ All tools also carry MCP `readOnlyHint` / `destructiveHint` annotations, so clie
 
 Same shape with movies: `radarr_list_movies`, `radarr_search_movies`, `radarr_calendar`, `radarr_queue`, `radarr_history`, `radarr_health`, `radarr_disk_space`, `radarr_list_quality_profiles`, `radarr_list_root_folders`, `radarr_system_status` (read); `radarr_add_movie`, `radarr_run_command` (write); `radarr_delete_movie`, `radarr_delete_queue_item` (destructive).
 
+### Bazarr (13)
+
+Subtitle management, including two instances if you run one per Sonarr/Radarr pair.
+
+| Tool | Access |
+|---|---|
+| `bazarr_badges` — outstanding counts, cheapest first call | read |
+| `bazarr_wanted_episodes`, `bazarr_wanted_movies` | read |
+| `bazarr_list_series`, `bazarr_list_movies` | read |
+| `bazarr_list_providers`, `bazarr_list_languages` | read |
+| `bazarr_health`, `bazarr_system_status` | read |
+| `bazarr_search_episode_subtitles`, `bazarr_search_movie_subtitles` | write |
+| `bazarr_delete_episode_subtitle`, `bazarr_delete_movie_subtitle` | destructive |
+
 ### Prowlarr (7)
 
 `prowlarr_search`, `prowlarr_list_indexers`, `prowlarr_indexer_stats`, `prowlarr_health`, `prowlarr_history`, `prowlarr_system_status` (read); `prowlarr_run_command` (write).
@@ -136,9 +150,9 @@ Services with no configured instances register no tools at all, so the advertise
 
 ### Planned
 
-Bazarr, Maintainerr, Cleanuparr and Notifiarr. Each is described by a
-`ServiceSpec` rather than a bespoke client, so they share the transport, the
-instance registry and the permission model.
+Maintainerr, Cleanuparr and Notifiarr. Each is described by a `ServiceSpec`
+rather than a bespoke client, so they share the transport, the instance
+registry and the permission model.
 
 ### Not planned: media servers and request managers
 

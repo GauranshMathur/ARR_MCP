@@ -48,7 +48,7 @@ const (
 
 // KnownServices lists the services this build can expose tools for. Config
 // referencing anything else is rejected rather than silently ignored.
-var KnownServices = []string{"sonarr", "radarr", "prowlarr"}
+var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr"}
 
 // Permissions describes how mutating tools are treated.
 type Permissions struct {

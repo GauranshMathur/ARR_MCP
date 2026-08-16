@@ -11,6 +11,7 @@ import (
 // capture records what the fake upstream received.
 type capture struct {
 	path   string
+	method string
 	header http.Header
 	query  string
 }
@@ -21,6 +22,7 @@ func fakeService(t *testing.T, status int, body string) (*httptest.Server, *capt
 	got := &capture{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got.path = r.URL.Path
+		got.method = r.Method
 		got.header = r.Header.Clone()
 		got.query = r.URL.RawQuery
 		w.WriteHeader(status)
