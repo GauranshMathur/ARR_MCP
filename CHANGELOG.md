@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.2...v1.0.3) (2026-08-16)
+
+
+### Documentation
+
+* lead the README with the AI install option ([a5f2c07](https://github.com/GauranshMathur/ARR_MCP/commit/a5f2c074341f86c47ba33a409ccf3f8bd4ee1b8f))
+* lead the README with the AI install option ([d6baa83](https://github.com/GauranshMathur/ARR_MCP/commit/d6baa83229c42e0e5eae47169432aa88c5db867b))
+
 ## [1.0.2](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.1...v1.0.2) (2026-08-16)
 
 
