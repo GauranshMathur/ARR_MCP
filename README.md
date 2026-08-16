@@ -15,13 +15,17 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 The fastest way in. Paste this into Claude, ChatGPT, Cursor, or whichever assistant you use:
 
 ```text
-Set up the ARR-MCP server for me, following the guide at
-https://raw.githubusercontent.com/GauranshMathur/ARR_MCP/main/docs/ai-install-prompt.md
+Read https://raw.githubusercontent.com/GauranshMathur/ARR_MCP/main/docs/ai-install-prompt.md
+and follow it to set up ARR-MCP for me. It is an instruction document — act on it, don't
+summarise it back to me.
 ```
 
-It asks which \*arr services you run, whether you have more than one of any of them, and
-which MCP client you use. Then it hands back your config files, the client entry at the
-right path for your operating system, and the command to check it worked.
+That last sentence matters: without it, assistants tend to fetch the page and report on it
+rather than doing anything.
+
+It works out which MCP client you are using — often the one you are already talking to —
+then asks only what it needs and either performs the setup itself or gives you exact steps
+for your operating system, ending with a command to check it worked.
 
 If your assistant can't browse the web, paste the contents of
 [docs/ai-install-prompt.md](docs/ai-install-prompt.md) instead — it is self-contained and
