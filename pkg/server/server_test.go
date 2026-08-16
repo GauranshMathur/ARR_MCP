@@ -519,3 +519,36 @@ func TestListIndexersToolDoesNotLeakProviderCredentials(t *testing.T) {
 		t.Fatalf("indexer credentials reached the client: %s", body)
 	}
 }
+
+func TestMonitoringToolsAreRegistered(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_edit_series", "sonarr_set_season_monitored", "sonarr_monitor_episodes",
+		"radarr_edit_movies",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+func TestEditSeriesToolPutsToTheEditorEndpoint(t *testing.T) {
+	srv, paths := recordingArr(t, `[]`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_edit_series",
+		Arguments: map[string]any{"seriesIds": []any{5}, "monitored": false},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "PUT /api/v3/series/editor" {
+		t.Errorf("upstream calls = %v, want one PUT /api/v3/series/editor", *paths)
+	}
+}

@@ -100,6 +100,46 @@ func registerSonarr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "sonarr_edit_series",
+		description: "Change monitoring, quality profile, series type, tags or root folder for one or more series at once. " +
+			"Omitted fields are left untouched.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in EditSeriesArgs) (SeriesList, error) {
+		series, err := arr.SonarrEditSeries(ctx, c, arr.SeriesEditRequest{
+			SeriesIDs:        in.SeriesIDs,
+			Monitored:        in.Monitored,
+			QualityProfileID: in.QualityProfileID,
+			SeasonFolder:     in.SeasonFolder,
+			RootFolderPath:   in.RootFolderPath,
+			SeriesType:       in.SeriesType,
+			MonitorNewItems:  in.MonitorNewItems,
+			Tags:             in.Tags,
+			ApplyTags:        in.ApplyTags,
+			MoveFiles:        in.MoveFiles,
+		})
+		return SeriesList{Series: series, Count: len(series)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "sonarr_set_season_monitored",
+		description: "Monitor or unmonitor one season of a series. Season 0 is specials.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in SeasonMonitorArgs) (arr.Series, error) {
+		return arr.SonarrSetSeasonMonitored(ctx, c, in.SeriesID, in.SeasonNumber, in.Monitored)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "sonarr_monitor_episodes",
+		description: "Monitor or unmonitor specific episodes. Unmonitored episodes are never searched for.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in EpisodeMonitorArgs) (Updated, error) {
+		if err := arr.SonarrMonitorEpisodes(ctx, c, in.EpisodeIDs, in.Monitored); err != nil {
+			return Updated{}, err
+		}
+		return Updated{Updated: len(in.EpisodeIDs)}, nil
+	})
+
+	register(s, svc, spec, toolMeta{
 		name:        "sonarr_calendar",
 		description: "List episodes airing in a date range. Use for questions about what is coming up.",
 		access:      AccessRead,
@@ -192,6 +232,25 @@ func registerRadarr(s *Server) {
 			return Deleted{ID: in.ID}, err
 		}
 		return Deleted{ID: in.ID, Deleted: true}, nil
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "radarr_edit_movies",
+		description: "Change monitoring, quality profile, minimum availability, tags or root folder for one or more movies at once. " +
+			"Omitted fields are left untouched.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in EditMoviesArgs) (MovieList, error) {
+		movies, err := arr.RadarrEditMovies(ctx, c, arr.MovieEditRequest{
+			MovieIDs:            in.MovieIDs,
+			Monitored:           in.Monitored,
+			QualityProfileID:    in.QualityProfileID,
+			MinimumAvailability: in.MinimumAvailability,
+			RootFolderPath:      in.RootFolderPath,
+			Tags:                in.Tags,
+			ApplyTags:           in.ApplyTags,
+			MoveFiles:           in.MoveFiles,
+		})
+		return MovieList{Movies: movies, Count: len(movies)}, err
 	})
 
 	register(s, svc, spec, toolMeta{

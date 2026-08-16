@@ -421,3 +421,53 @@ type QualityDefinitionList struct {
 	Definitions []arr.QualityDefinition `json:"definitions"`
 	Count       int                     `json:"count"`
 }
+
+// EditSeriesArgs is the input for sonarr_edit_series. Optional fields are
+// pointers so an omitted argument stays absent from the upstream request
+// instead of resetting the setting to its zero value.
+type EditSeriesArgs struct {
+	InstanceArg
+	SeriesIDs        []int  `json:"seriesIds" jsonschema:"series ids from sonarr_list_series"`
+	Monitored        *bool  `json:"monitored,omitempty" jsonschema:"monitor or unmonitor the series"`
+	QualityProfileID *int   `json:"qualityProfileId,omitempty" jsonschema:"id from sonarr_list_quality_profiles"`
+	SeasonFolder     *bool  `json:"seasonFolder,omitempty"`
+	RootFolderPath   string `json:"rootFolderPath,omitempty" jsonschema:"path from sonarr_list_root_folders"`
+	SeriesType       string `json:"seriesType,omitempty" jsonschema:"standard, daily or anime"`
+	MonitorNewItems  string `json:"monitorNewItems,omitempty" jsonschema:"all or none"`
+	Tags             []int  `json:"tags,omitempty" jsonschema:"tag ids from sonarr_list_tags"`
+	ApplyTags        string `json:"applyTags,omitempty" jsonschema:"how to apply tags: add, remove or replace; defaults to add"`
+	MoveFiles        bool   `json:"moveFiles,omitempty" jsonschema:"move files on disk when rootFolderPath changes"`
+}
+
+// EditMoviesArgs is the input for radarr_edit_movies.
+type EditMoviesArgs struct {
+	InstanceArg
+	MovieIDs            []int  `json:"movieIds" jsonschema:"movie ids from radarr_list_movies"`
+	Monitored           *bool  `json:"monitored,omitempty" jsonschema:"monitor or unmonitor the movies"`
+	QualityProfileID    *int   `json:"qualityProfileId,omitempty" jsonschema:"id from radarr_list_quality_profiles"`
+	MinimumAvailability string `json:"minimumAvailability,omitempty" jsonschema:"tba, announced, inCinemas or released"`
+	RootFolderPath      string `json:"rootFolderPath,omitempty" jsonschema:"path from radarr_list_root_folders"`
+	Tags                []int  `json:"tags,omitempty" jsonschema:"tag ids from radarr_list_tags"`
+	ApplyTags           string `json:"applyTags,omitempty" jsonschema:"how to apply tags: add, remove or replace; defaults to add"`
+	MoveFiles           bool   `json:"moveFiles,omitempty" jsonschema:"move files on disk when rootFolderPath changes"`
+}
+
+// SeasonMonitorArgs is the input for sonarr_set_season_monitored.
+type SeasonMonitorArgs struct {
+	InstanceArg
+	SeriesID     int  `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber int  `json:"seasonNumber" jsonschema:"season number; 0 is specials"`
+	Monitored    bool `json:"monitored" jsonschema:"true to monitor the season, false to unmonitor it"`
+}
+
+// EpisodeMonitorArgs is the input for sonarr_monitor_episodes.
+type EpisodeMonitorArgs struct {
+	InstanceArg
+	EpisodeIDs []int `json:"episodeIds" jsonschema:"episode ids from sonarr_list_episodes"`
+	Monitored  bool  `json:"monitored" jsonschema:"true to monitor the episodes, false to unmonitor them"`
+}
+
+// Updated reports how many records a bulk edit touched.
+type Updated struct {
+	Updated int `json:"updated"`
+}

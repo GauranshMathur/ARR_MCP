@@ -85,3 +85,33 @@ func RadarrDeleteMovie(ctx context.Context, c *Client, id int, deleteFiles bool)
 	_, err := c.Delete(ctx, "/movie/"+itoa(id), Query{"deleteFiles": btoa(deleteFiles)})
 	return err
 }
+
+// MovieEditRequest describes a bulk change to one or more movies. As with the
+// Sonarr editor, optional fields must stay absent rather than be sent as zero
+// values, or they would overwrite settings the caller never named.
+type MovieEditRequest struct {
+	MovieIDs            []int  `json:"movieIds"`
+	Monitored           *bool  `json:"monitored,omitempty"`
+	QualityProfileID    *int   `json:"qualityProfileId,omitempty"`
+	MinimumAvailability string `json:"minimumAvailability,omitempty" jsonschema:"tba, announced, inCinemas or released"`
+	RootFolderPath      string `json:"rootFolderPath,omitempty"`
+	Tags                []int  `json:"tags,omitempty"`
+	ApplyTags           string `json:"applyTags,omitempty" jsonschema:"add, remove or replace"`
+	MoveFiles           bool   `json:"moveFiles"`
+}
+
+// RadarrEditMovies applies a change to a set of movies at once.
+func RadarrEditMovies(ctx context.Context, c *Client, req MovieEditRequest) ([]Movie, error) {
+	if len(req.Tags) > 0 && req.ApplyTags == "" {
+		req.ApplyTags = "add"
+	}
+	body, err := c.Put(ctx, "/movie/editor", req)
+	if err != nil {
+		return nil, err
+	}
+	var raw []rawMovie
+	if err := unmarshal(body, &raw); err != nil {
+		return nil, err
+	}
+	return trimMovies(raw), nil
+}
