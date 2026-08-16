@@ -135,10 +135,18 @@ func (c *Client) authorize(req *http.Request) {
 	}
 }
 
+// minRedactable is the shortest credential worth removing from an error.
+// Redaction is a substring replace, so a very short value rewrites unrelated
+// words: a one-character key once turned "context deadline exceeded" into
+// "conte***t deadline e***ceeded". Nothing this short is a real *arr API key,
+// and a corrupted error message is worse than not masking a value that carries
+// no secrecy anyway.
+const minRedactable = 8
+
 // redact removes credentials from text bound for logs or model-visible errors.
 func (c *Client) redact(s string) string {
 	for _, secret := range []string{c.creds.APIKey, c.creds.Password} {
-		if secret != "" {
+		if len(secret) >= minRedactable {
 			s = strings.ReplaceAll(s, secret, "***")
 		}
 	}
