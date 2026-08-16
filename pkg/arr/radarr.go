@@ -115,3 +115,20 @@ func RadarrEditMovies(ctx context.Context, c *Client, req MovieEditRequest) ([]M
 	}
 	return trimMovies(raw), nil
 }
+
+// RadarrListMovieFiles returns the files on disk for one movie.
+func RadarrListMovieFiles(ctx context.Context, c *Client, movieID int) ([]MediaFile, error) {
+	return listMediaFiles(ctx, c, "/moviefile", Query{"movieId": itoa(movieID)})
+}
+
+// RadarrDeleteMovieFiles deletes movie files from disk and returns how many
+// were removed. This cannot be undone.
+func RadarrDeleteMovieFiles(ctx context.Context, c *Client, ids []int) (int, error) {
+	return deleteFiles(ctx, c, "/moviefile", ids, "movie file")
+}
+
+// RadarrRenamePreview lists the files of one movie that do not match the naming
+// config, and what they would be renamed to.
+func RadarrRenamePreview(ctx context.Context, c *Client, movieID int) ([]RenamePreview, error) {
+	return GetJSON[[]RenamePreview](ctx, c, "/rename", Query{"movieId": itoa(movieID)})
+}

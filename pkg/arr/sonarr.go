@@ -195,3 +195,24 @@ func SonarrSetSeasonMonitored(ctx context.Context, c *Client, seriesID, seasonNu
 	}
 	return raw.toSeries(), nil
 }
+
+// SonarrListEpisodeFiles returns the files on disk for one series.
+func SonarrListEpisodeFiles(ctx context.Context, c *Client, seriesID int) ([]MediaFile, error) {
+	return listMediaFiles(ctx, c, "/episodefile", Query{"seriesId": itoa(seriesID)})
+}
+
+// SonarrDeleteEpisodeFiles deletes episode files from disk and returns how many
+// were removed. This cannot be undone.
+func SonarrDeleteEpisodeFiles(ctx context.Context, c *Client, ids []int) (int, error) {
+	return deleteFiles(ctx, c, "/episodefile", ids, "episode file")
+}
+
+// SonarrRenamePreview lists the files whose names do not match the naming
+// config, and what they would be renamed to. A nil season covers the series.
+func SonarrRenamePreview(ctx context.Context, c *Client, seriesID int, seasonNumber *int) ([]RenamePreview, error) {
+	q := Query{"seriesId": itoa(seriesID)}
+	if seasonNumber != nil {
+		q["seasonNumber"] = itoa(*seasonNumber)
+	}
+	return GetJSON[[]RenamePreview](ctx, c, "/rename", q)
+}

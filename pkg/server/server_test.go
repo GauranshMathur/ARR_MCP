@@ -552,3 +552,34 @@ func TestEditSeriesToolPutsToTheEditorEndpoint(t *testing.T) {
 		t.Errorf("upstream calls = %v, want one PUT /api/v3/series/editor", *paths)
 	}
 }
+
+func TestFileToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_list_episode_files", "sonarr_delete_episode_files", "sonarr_rename_preview",
+		"radarr_list_movie_files", "radarr_delete_movie_files", "radarr_rename_preview",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+// Deleting files from disk cannot be undone, so it must be gated as
+// destructive and never advertised to a readonly deployment.
+func TestDeleteFileToolsAreDestructive(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	cs := connect(t, cfgWith(map[string][]config.Instance{
+		"radarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeReadOnly, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}))
+
+	names := toolNames(t, cs)
+	if has(names, "radarr_delete_movie_files") {
+		t.Error("readonly mode must not expose radarr_delete_movie_files")
+	}
+	if !has(names, "radarr_list_movie_files") {
+		t.Error("readonly mode must still expose radarr_list_movie_files")
+	}
+}

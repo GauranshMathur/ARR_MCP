@@ -579,3 +579,108 @@ func ListQualityDefinitions(ctx context.Context, c *Client) ([]QualityDefinition
 	}
 	return out, nil
 }
+
+// --- media files and renames ---
+
+// MediaFile is the trimmed view of an episode file or a movie file. The
+// upstream resources are dominated by a mediaInfo block and a custom format
+// list: one Sonarr series' files come to 252 KB raw, which no listing can
+// afford. SeasonNumber is a pointer because season 0 is specials and would
+// otherwise be indistinguishable from "no season".
+type MediaFile struct {
+	ID                  int      `json:"id"`
+	SeriesID            int      `json:"seriesId,omitempty"`
+	MovieID             int      `json:"movieId,omitempty"`
+	SeasonNumber        *int     `json:"seasonNumber,omitempty"`
+	RelativePath        string   `json:"relativePath,omitempty"`
+	Size                int64    `json:"size,omitempty" jsonschema:"file size in bytes"`
+	DateAdded           string   `json:"dateAdded,omitempty"`
+	Quality             string   `json:"quality,omitempty"`
+	ReleaseGroup        string   `json:"releaseGroup,omitempty"`
+	Languages           []string `json:"languages,omitempty"`
+	CustomFormatScore   int      `json:"customFormatScore,omitempty"`
+	QualityCutoffNotMet bool     `json:"qualityCutoffNotMet,omitempty" jsonschema:"true when a better release would still be an upgrade"`
+}
+
+// rawMediaFile mirrors the upstream episode and movie file resources. mediaInfo
+// and customFormats are absent by design rather than decoded and discarded.
+type rawMediaFile struct {
+	ID           int    `json:"id"`
+	SeriesID     int    `json:"seriesId"`
+	MovieID      int    `json:"movieId"`
+	SeasonNumber *int   `json:"seasonNumber"`
+	RelativePath string `json:"relativePath"`
+	Size         int64  `json:"size"`
+	DateAdded    string `json:"dateAdded"`
+	ReleaseGroup string `json:"releaseGroup"`
+	Languages    []struct {
+		Name string `json:"name"`
+	} `json:"languages"`
+	Quality struct {
+		Quality struct {
+			Name string `json:"name"`
+		} `json:"quality"`
+	} `json:"quality"`
+	CustomFormatScore   int  `json:"customFormatScore"`
+	QualityCutoffNotMet bool `json:"qualityCutoffNotMet"`
+}
+
+func (r rawMediaFile) toMediaFile() MediaFile {
+	languages := make([]string, 0, len(r.Languages))
+	for _, l := range r.Languages {
+		languages = append(languages, l.Name)
+	}
+	if len(languages) == 0 {
+		languages = nil
+	}
+	return MediaFile{
+		ID: r.ID, SeriesID: r.SeriesID, MovieID: r.MovieID,
+		SeasonNumber: r.SeasonNumber, RelativePath: r.RelativePath,
+		Size: r.Size, DateAdded: r.DateAdded,
+		Quality: r.Quality.Quality.Name, ReleaseGroup: r.ReleaseGroup,
+		Languages:         languages,
+		CustomFormatScore: r.CustomFormatScore, QualityCutoffNotMet: r.QualityCutoffNotMet,
+	}
+}
+
+// RenamePreview is one file the service would rename, and where it would go.
+type RenamePreview struct {
+	EpisodeFileID  int    `json:"episodeFileId,omitempty"`
+	MovieFileID    int    `json:"movieFileId,omitempty"`
+	SeasonNumber   *int   `json:"seasonNumber,omitempty"`
+	EpisodeNumbers []int  `json:"episodeNumbers,omitempty"`
+	ExistingPath   string `json:"existingPath"`
+	NewPath        string `json:"newPath"`
+}
+
+// listMediaFiles fetches and trims one of the file endpoints.
+func listMediaFiles(ctx context.Context, c *Client, path string, q Query) ([]MediaFile, error) {
+	raw, err := GetJSON[[]rawMediaFile](ctx, c, path, q)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MediaFile, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.toMediaFile())
+	}
+	return out, nil
+}
+
+// deleteFiles removes each file in turn and reports how many were deleted.
+//
+// The bulk endpoints take a request body on a DELETE, and their exact shape
+// could not be verified against a live instance without destroying files, so
+// this uses the single-id route that has been stable since v3. Reporting the
+// count matters because a failure halfway through is not undoable: the caller
+// must not simply retry the whole list.
+func deleteFiles(ctx context.Context, c *Client, path string, ids []int, kind string) (int, error) {
+	if len(ids) == 0 {
+		return 0, fmt.Errorf("no %s ids given; nothing was deleted", kind)
+	}
+	for i, id := range ids {
+		if _, err := c.Delete(ctx, path+"/"+itoa(id)); err != nil {
+			return i, fmt.Errorf("deleting %s %d after %d of %d succeeded: %w", kind, id, i, len(ids), err)
+		}
+	}
+	return len(ids), nil
+}

@@ -471,3 +471,41 @@ type EpisodeMonitorArgs struct {
 type Updated struct {
 	Updated int `json:"updated"`
 }
+
+// MovieArgs is the input for tools scoped to one movie.
+type MovieArgs struct {
+	InstanceArg
+	MovieID int `json:"movieId" jsonschema:"movie id from radarr_list_movies"`
+}
+
+// FileIDsArgs is the input for file deletion.
+type FileIDsArgs struct {
+	InstanceArg
+	FileIDs []int `json:"fileIds" jsonschema:"file ids from the file listing tool"`
+}
+
+// SeriesRenameArgs is the input for sonarr_rename_preview.
+type SeriesRenameArgs struct {
+	InstanceArg
+	SeriesID     int  `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber *int `json:"seasonNumber,omitempty" jsonschema:"limit the preview to one season; omit for the whole series"`
+}
+
+// MediaFileList wraps episode and movie file results.
+type MediaFileList struct {
+	Files []arr.MediaFile `json:"files"`
+	Count int             `json:"count"`
+}
+
+// RenamePreviewList wraps rename preview results.
+type RenamePreviewList struct {
+	Renames []arr.RenamePreview `json:"renames"`
+	Count   int                 `json:"count"`
+}
+
+// DeletedCount reports how many records a bulk deletion removed. A partial
+// failure reports the count reached before the error, because deleted files do
+// not come back and the caller must not blindly retry the whole list.
+type DeletedCount struct {
+	Deleted int `json:"deleted"`
+}

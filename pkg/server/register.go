@@ -140,6 +140,34 @@ func registerSonarr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name:        "sonarr_list_episode_files",
+		description: "List the episode files on disk for one series, with their quality, size and release group.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in EpisodesArgs) (MediaFileList, error) {
+		files, err := arr.SonarrListEpisodeFiles(ctx, c, in.SeriesID)
+		return MediaFileList{Files: files, Count: len(files)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "sonarr_delete_episode_files",
+		description: "Delete episode files from disk. This cannot be undone. " +
+			"Pass file ids from sonarr_list_episode_files, not episode ids.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in FileIDsArgs) (DeletedCount, error) {
+		deleted, err := arr.SonarrDeleteEpisodeFiles(ctx, c, in.FileIDs)
+		return DeletedCount{Deleted: deleted}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "sonarr_rename_preview",
+		description: "Show which episode files do not match the naming config and what they would be renamed to. Renames nothing.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in SeriesRenameArgs) (RenamePreviewList, error) {
+		renames, err := arr.SonarrRenamePreview(ctx, c, in.SeriesID, in.SeasonNumber)
+		return RenamePreviewList{Renames: renames, Count: len(renames)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name:        "sonarr_calendar",
 		description: "List episodes airing in a date range. Use for questions about what is coming up.",
 		access:      AccessRead,
@@ -251,6 +279,34 @@ func registerRadarr(s *Server) {
 			MoveFiles:           in.MoveFiles,
 		})
 		return MovieList{Movies: movies, Count: len(movies)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_list_movie_files",
+		description: "List the files on disk for one movie, with their quality, size and release group.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in MovieArgs) (MediaFileList, error) {
+		files, err := arr.RadarrListMovieFiles(ctx, c, in.MovieID)
+		return MediaFileList{Files: files, Count: len(files)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "radarr_delete_movie_files",
+		description: "Delete movie files from disk. This cannot be undone. " +
+			"Pass file ids from radarr_list_movie_files, not movie ids.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in FileIDsArgs) (DeletedCount, error) {
+		deleted, err := arr.RadarrDeleteMovieFiles(ctx, c, in.FileIDs)
+		return DeletedCount{Deleted: deleted}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_rename_preview",
+		description: "Show which files of a movie do not match the naming config and what they would be renamed to. Renames nothing.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in MovieArgs) (RenamePreviewList, error) {
+		renames, err := arr.RadarrRenamePreview(ctx, c, in.MovieID)
+		return RenamePreviewList{Renames: renames, Count: len(renames)}, err
 	})
 
 	register(s, svc, spec, toolMeta{

@@ -17,6 +17,8 @@ type capture struct {
 	query  string
 	method string
 	body   string
+	// paths accumulates every request, for calls that fan out over ids.
+	paths []string
 }
 
 // fakeService returns a test server recording the last request, plus the capture.
@@ -29,6 +31,7 @@ func fakeService(t *testing.T, status int, body string) (*httptest.Server, *capt
 		got.header = r.Header.Clone()
 		got.query = r.URL.RawQuery
 		got.method = r.Method
+		got.paths = append(got.paths, r.Method+" "+r.URL.Path)
 		sent, _ := io.ReadAll(r.Body)
 		got.body = string(sent)
 		w.WriteHeader(status)
