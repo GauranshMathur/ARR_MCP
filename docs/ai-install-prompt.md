@@ -1,11 +1,19 @@
 # Install ARR-MCP with your AI assistant
 
-Copy the block below and paste it into Claude, ChatGPT, or whichever assistant you use. It
-contains everything needed to set ARR-MCP up correctly, so the assistant can interview you
-about your setup and hand back working configuration instead of guessing.
+There are two ways to use this.
 
-Use the copy button in the corner of the block. Paste it, answer the questions, and follow
-the steps it gives you.
+**If your assistant can browse the web**, this one line is enough:
+
+```text
+Set up the ARR-MCP server for me, following the guide at
+https://raw.githubusercontent.com/GauranshMathur/ARR_MCP/main/docs/ai-install-prompt.md
+```
+
+**Otherwise**, copy the block below and paste it in directly — it is self-contained and
+needs no network access. Use the copy button in the corner of the block.
+
+Either way, the assistant interviews you about your setup and hands back working
+configuration instead of guessing. Answer its questions and follow the steps it gives you.
 
 > Your API keys stay between you and your \*arr apps. The prompt tells the assistant not to
 > ask for them unless a step genuinely needs one, and to keep them out of files you might
