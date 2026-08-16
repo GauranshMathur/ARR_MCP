@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.3.0](https://github.com/GauranshMathur/ARR_MCP/compare/v0.2.0...v0.3.0) (2026-08-16)
+
+
+### Features
+
+* **arr:** add custom format, profile and connection tools ([d6c91f1](https://github.com/GauranshMathur/ARR_MCP/commit/d6c91f1a5fdb1e269cf1508fac7bf3a2de537137))
+* **arr:** add media file listing, deletion and rename previews ([c5e67a7](https://github.com/GauranshMathur/ARR_MCP/commit/c5e67a71516bb364a270df088c0a2926d908eb8d))
+* **arr:** add monitoring and bulk edit control ([c00c736](https://github.com/GauranshMathur/ARR_MCP/commit/c00c736197413109195f1b2d53dd27675f8beed1))
+* **arr:** add tag management for Sonarr and Radarr ([2a99bed](https://github.com/GauranshMathur/ARR_MCP/commit/2a99bedcd0a9e83511d0e3775f59d0e70fc078e1))
+* **arr:** add wanted lists, blocklist, targeted search and system views ([07972b6](https://github.com/GauranshMathur/ARR_MCP/commit/07972b673b64ac8aaf9bd532764ff9d35057e76e))
+* **arr:** near-complete Sonarr and Radarr API coverage ([dfa845b](https://github.com/GauranshMathur/ARR_MCP/commit/dfa845b8c62ffac7c39c5ecc5a15dcd366d34e32))
+* **bazarr:** add subtitle management tools ([9cc4393](https://github.com/GauranshMathur/ARR_MCP/commit/9cc4393af3d2345ec540dd46585ca3c397a38227))
+* **bazarr:** add subtitle management tools ([0a03c63](https://github.com/GauranshMathur/ARR_MCP/commit/0a03c6326f8324cf0e32d90201d661f474113240))
+
+
+### Bug Fixes
+
+* **bazarr:** correct API assumptions surfaced in code review ([38f7e66](https://github.com/GauranshMathur/ARR_MCP/commit/38f7e66b8626eeb650380fa46d250680e098ab4b))
+
+
+### Refactoring
+
+* **server:** rename the subtitle provider wrapper ([5fab81f](https://github.com/GauranshMathur/ARR_MCP/commit/5fab81f999e22004d0f343f876dbe36a33897b41))
+
+
+### Documentation
+
+* add per-client MCP setup guide ([2c20e61](https://github.com/GauranshMathur/ARR_MCP/commit/2c20e619d533bc0b4e014f1eeed355da1241addb))
+* clarify the two configuration paths in the templates ([ce90a71](https://github.com/GauranshMathur/ARR_MCP/commit/ce90a71093c2cbc444099da4464d1a0a525d645a))
+* correct the tool count to 50 ([a663722](https://github.com/GauranshMathur/ARR_MCP/commit/a6637220059e09b5f18fda484a3706ce1214ef46))
+* document the expanded Sonarr and Radarr tool surface ([4cc49e7](https://github.com/GauranshMathur/ARR_MCP/commit/4cc49e7ed652417dbacd81dbb7f591bf0521dc36))
+* per-client setup guide, quickstart and Kubernetes manifests ([c51e3d8](https://github.com/GauranshMathur/ARR_MCP/commit/c51e3d8af1aba064d5ffe8eb28f2ba53d66fa861))
+* restructure README around a 60-second quickstart ([67873b6](https://github.com/GauranshMathur/ARR_MCP/commit/67873b6efaea43e88aac13b540b6d68cd204f01f))
+
+
+### Build & Packaging
+
+* add Kubernetes manifests ([d19f561](https://github.com/GauranshMathur/ARR_MCP/commit/d19f561c8753f481ff384eed29fffc1a4fbeeb33))
+* document the compose deployment's constraints ([34b1f45](https://github.com/GauranshMathur/ARR_MCP/commit/34b1f450fc85c4b1965c9bee656e6a954609e5c4))
+
 ## [0.2.0](https://github.com/GauranshMathur/ARR_MCP/compare/v0.1.0...v0.2.0) (2026-08-16)
 
 
