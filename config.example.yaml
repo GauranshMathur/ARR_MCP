@@ -1,0 +1,51 @@
+# ARR-MCP configuration.
+#
+# Copy to config.yaml and edit. Secrets should stay in environment variables and
+# be referenced as ${VAR} so this file is safe to commit or mount from a
+# ConfigMap. An unset variable is a startup error, never a silent empty value.
+
+server:
+  # stdio for desktop MCP clients, http for a shared/in-cluster deployment.
+  transport: stdio
+  addr: 0.0.0.0:8080
+  logLevel: info
+
+permissions:
+  # readonly - only read tools are exposed at all
+  # confirm  - mutating tools ask the user before running (default)
+  # full     - everything runs immediately
+  mode: confirm
+  # Which tiers require confirmation under `confirm`: write (includes
+  # destructive) or destructive (deletes only).
+  confirmScope: write
+  # What to do when the MCP client cannot prompt the user. `deny` fails closed,
+  # so a client lacking elicitation support never gets silent write access.
+  fallback: deny
+
+services:
+  sonarr:
+    - name: main
+      url: http://192.168.10.12:8989
+      apiKey: ${SONARR_MAIN_API_KEY}
+      default: true
+    - name: anime
+      url: http://192.168.10.13:8989
+      apiKey: ${SONARR_ANIME_API_KEY}
+      # Per-instance override: this instance refuses all mutations regardless
+      # of the global mode above.
+      permissions:
+        mode: readonly
+
+  radarr:
+    - name: main
+      url: http://192.168.10.14:7878
+      apiKey: ${RADARR_MAIN_API_KEY}
+      default: true
+    - name: 4k
+      url: http://192.168.10.15:7878
+      apiKey: ${RADARR_4K_API_KEY}
+
+  prowlarr:
+    - name: main
+      url: http://192.168.10.18:9696
+      apiKey: ${PROWLARR_API_KEY}

@@ -1,0 +1,10 @@
+.git
+.github
+*.md
+!README.md
+Dockerfile
+.dockerignore
+docker-compose.yml
+.env
+.env.example
+arr-mcp

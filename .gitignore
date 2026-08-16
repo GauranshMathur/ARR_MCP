@@ -1,4 +1,18 @@
+# Build output
 arr-mcp
+/dist/
+coverage.out
+*.sarif
+
+# Local configuration and secrets - templates are committed, real values are not
+.env
+config.yaml
+!config.example.yaml
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
 
 CLAUDE.md
-.DS_Store
