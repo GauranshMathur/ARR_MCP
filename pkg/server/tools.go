@@ -237,3 +237,128 @@ type EpisodeList struct {
 type IndexerStatList struct {
 	Stats []arr.IndexerStat `json:"stats"`
 }
+
+// --- bazarr tool inputs ---
+
+// PageArgs is the input for Bazarr's start/length paged listings.
+type PageArgs struct {
+	InstanceArg
+	Start  int `json:"start,omitempty" jsonschema:"offset into the result set; defaults to 0"`
+	Length int `json:"length,omitempty" jsonschema:"maximum records to return; defaults to 50"`
+}
+
+// LanguagesArgs is the input for listing Bazarr languages.
+type LanguagesArgs struct {
+	InstanceArg
+	All bool `json:"all,omitempty" jsonschema:"return every ISO language instead of only the enabled ones"`
+}
+
+// EpisodeSubtitleArgs identifies one episode subtitle language to search for.
+type EpisodeSubtitleArgs struct {
+	InstanceArg
+	SeriesID  int    `json:"seriesId" jsonschema:"sonarrSeriesId from bazarr_wanted_episodes"`
+	EpisodeID int    `json:"episodeId" jsonschema:"sonarrEpisodeId from bazarr_wanted_episodes"`
+	Language  string `json:"language" jsonschema:"two-letter language code, e.g. en"`
+	Forced    bool   `json:"forced,omitempty"`
+	HI        bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// MovieSubtitleArgs identifies one movie subtitle language to search for.
+type MovieSubtitleArgs struct {
+	InstanceArg
+	RadarrID int    `json:"radarrId" jsonschema:"radarrId from bazarr_wanted_movies"`
+	Language string `json:"language" jsonschema:"two-letter language code, e.g. en"`
+	Forced   bool   `json:"forced,omitempty"`
+	HI       bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// DeleteEpisodeSubtitleArgs identifies an existing subtitle file to remove.
+// Path is required and comes from bazarr_list_episode_subtitles.
+type DeleteEpisodeSubtitleArgs struct {
+	InstanceArg
+	SeriesID  int    `json:"seriesId" jsonschema:"sonarrSeriesId of the episode"`
+	EpisodeID int    `json:"episodeId" jsonschema:"sonarrEpisodeId of the episode"`
+	Language  string `json:"language" jsonschema:"two-letter language code of the subtitle to delete"`
+	Path      string `json:"path" jsonschema:"subtitle file path from bazarr_list_episode_subtitles"`
+	Forced    bool   `json:"forced,omitempty"`
+	HI        bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// DeleteMovieSubtitleArgs identifies an existing movie subtitle file to remove.
+type DeleteMovieSubtitleArgs struct {
+	InstanceArg
+	RadarrID int    `json:"radarrId" jsonschema:"radarrId of the movie"`
+	Language string `json:"language" jsonschema:"two-letter language code of the subtitle to delete"`
+	Path     string `json:"path" jsonschema:"subtitle file path of the subtitle to delete"`
+	Forced   bool   `json:"forced,omitempty"`
+	HI       bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// SeriesSubtitlesArgs selects a series whose per-episode subtitles to list.
+type SeriesSubtitlesArgs struct {
+	InstanceArg
+	SeriesID int `json:"seriesId" jsonschema:"sonarrSeriesId from bazarr_list_series"`
+}
+
+// --- bazarr tool outputs ---
+
+// WantedEpisodeList wraps episodes missing subtitles.
+type WantedEpisodeList struct {
+	Episodes []arr.WantedEpisode `json:"episodes"`
+	Returned int                 `json:"returned"`
+	Total    int                 `json:"total" jsonschema:"total missing across the whole library"`
+}
+
+// WantedMovieList wraps movies missing subtitles.
+type WantedMovieList struct {
+	Movies   []arr.WantedMovie `json:"movies"`
+	Returned int               `json:"returned"`
+	Total    int               `json:"total"`
+}
+
+// BazarrSeriesList wraps a page of Bazarr's series view.
+type BazarrSeriesList struct {
+	Series   []arr.BazarrSeries `json:"series"`
+	Returned int                `json:"returned"`
+	Total    int                `json:"total" jsonschema:"total series in the library, which may exceed those returned"`
+}
+
+// BazarrMovieList wraps a page of Bazarr's movie view.
+type BazarrMovieList struct {
+	Movies   []arr.BazarrMovie `json:"movies"`
+	Returned int               `json:"returned"`
+	Total    int               `json:"total" jsonschema:"total movies in the library, which may exceed those returned"`
+}
+
+// BazarrHealthList wraps Bazarr health issues, which use their own shape.
+type BazarrHealthList struct {
+	Issues []arr.BazarrHealthIssue `json:"issues"`
+	Count  int                     `json:"count"`
+}
+
+// EpisodeSubtitlesList wraps per-episode subtitle state.
+type EpisodeSubtitlesList struct {
+	Episodes []arr.EpisodeSubtitles `json:"episodes"`
+	Count    int                    `json:"count"`
+}
+
+// ProviderList wraps subtitle provider status.
+type ProviderList struct {
+	Providers []arr.SubtitleProvider `json:"providers"`
+}
+
+// LanguageList wraps subtitle languages.
+type LanguageList struct {
+	Languages []arr.SubtitleLanguage `json:"languages"`
+}
+
+// StatusMap wraps a free-form status payload.
+type StatusMap struct {
+	Status map[string]any `json:"status"`
+}
+
+// Requested reports that a background request was accepted.
+type Requested struct {
+	Requested bool   `json:"requested"`
+	Detail    string `json:"detail,omitempty"`
+}

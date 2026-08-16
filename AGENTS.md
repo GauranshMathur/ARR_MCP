@@ -14,18 +14,23 @@ Conventions for working in this repository. Read this before adding a service or
 
 Do this in order, and stop at the first that gives an authoritative answer:
 
-1. **Live OpenAPI/Swagger document.** Many services expose one unauthenticated:
+1. **Live OpenAPI/Swagger document.** Some services expose one unauthenticated:
    ```bash
    curl -s http://<host>:<port>/api/swagger.json | head -c 200
    ```
-   Bazarr, Sonarr, Radarr and Prowlarr all do.
+   Bazarr does. Sonarr 4.x and Radarr 6.x do **not** — they answer 404 even with
+   a valid key, and unauthenticated they answer 401 for every path including
+   nonexistent ones, which disguises the 404. For those, use the upstream repo's
+   spec and verify each endpoint against the live instance.
 2. **Probe the live instance.** Response schemas are often missing from the spec even when the paths are documented. When a key is needed, run the request *inside* the pod so the credential never leaves it:
    ```
    kubectl exec <pod> -- sh -c 'K=$(...); curl -s -H "X-API-KEY: $K" http://127.0.0.1:<port>/api/<path>'
    ```
 3. **context7** for published library/API documentation.
 
-Record anything surprising in the commit body. Real examples already found: Prowlarr serves `/api/v1` while Sonarr and Radarr serve `/api/v3`; Bazarr wants `X-API-KEY` rather than `X-Api-Key`; Bazarr wraps most responses in `data` but `/badges` and `/system/languages` are bare.
+Record anything surprising in the commit body. Real examples already found: Prowlarr serves `/api/v1` while Sonarr and Radarr serve `/api/v3`; Bazarr wraps most responses in `data` but `/badges` and `/system/languages` are bare; provider resources (indexers, download clients, notifications) embed credentials in a `fields` array that must never reach a tool result.
+
+**Header case is not yours to choose.** `net/http` canonicalises header keys, so `ServiceSpec.AuthHeader` selects a header *name*, never its casing — `"X-API-KEY"` goes on the wire as `X-Api-Key`. A test asserting with `Header.Get` cannot detect this, because `Get` canonicalises the lookup too. Verify against the live service which spellings it accepts before concluding one is required.
 
 ## Adding a service
 

@@ -38,6 +38,8 @@ type ServiceSpec struct {
 	// Auth selects the credential scheme.
 	Auth AuthKind
 	// AuthHeader names the header for AuthHeaderKey; defaults to X-Api-Key.
+	// Only the name is meaningful: net/http canonicalises header casing, so a
+	// spec cannot request a differently-cased spelling of the same name.
 	AuthHeader string
 }
 
@@ -49,7 +51,16 @@ var (
 	RadarrSpec = ServiceSpec{Name: "radarr", BasePath: "/api/v3", StatusPath: "/system/status", Auth: AuthHeaderKey}
 	// ProwlarrSpec describes Prowlarr's v1 API, which differs from Sonarr/Radarr.
 	ProwlarrSpec = ServiceSpec{Name: "prowlarr", BasePath: "/api/v1", StatusPath: "/system/status", Auth: AuthHeaderKey}
+	// BazarrSpec describes Bazarr, which serves /api rather than a versioned
+	// path. It accepts the canonical X-Api-Key header, so no override is needed.
+	BazarrSpec = ServiceSpec{
+		Name: "bazarr", BasePath: "/api", StatusPath: "/system/status",
+		Auth: AuthHeaderKey,
+	}
 )
+
+// defaultTimeout bounds ordinary reads and fire-and-forget commands.
+const defaultTimeout = 30 * time.Second
 
 // Credentials carries the secrets for whichever auth scheme a spec selects.
 type Credentials struct {
@@ -75,12 +86,20 @@ func NewClient(baseURL string, spec ServiceSpec, creds Credentials) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		spec:    spec,
 		creds:   creds,
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    &http.Client{Timeout: defaultTimeout},
 	}
 }
 
 // Spec returns the service description this client was built from.
 func (c *Client) Spec() ServiceSpec { return c.spec }
+
+// WithTimeout returns a copy of the client using a different request timeout,
+// for calls that legitimately run longer than a read. The original is unchanged.
+func (c *Client) WithTimeout(d time.Duration) *Client {
+	clone := *c
+	clone.http = &http.Client{Timeout: d}
+	return &clone
+}
 
 // resolve builds an absolute URL, preserving any subpath in the configured base
 // URL so services behind a reverse-proxy prefix keep working.
@@ -183,6 +202,12 @@ func (c *Client) Post(ctx context.Context, path string, body any) ([]byte, error
 // Put performs a PUT request with a JSON body.
 func (c *Client) Put(ctx context.Context, path string, body any) ([]byte, error) {
 	return c.do(ctx, http.MethodPut, path, body, nil)
+}
+
+// Patch performs a PATCH request driven by query parameters, which is how
+// Bazarr expresses its mutations.
+func (c *Client) Patch(ctx context.Context, path string, q Query) ([]byte, error) {
+	return c.do(ctx, http.MethodPatch, path, nil, q)
 }
 
 // Delete performs a DELETE request.

@@ -22,6 +22,7 @@ var specs = map[string]arr.ServiceSpec{
 	"sonarr":   arr.SonarrSpec,
 	"radarr":   arr.RadarrSpec,
 	"prowlarr": arr.ProwlarrSpec,
+	"bazarr":   arr.BazarrSpec,
 }
 
 func main() {

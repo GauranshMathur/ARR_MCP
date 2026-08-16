@@ -13,6 +13,7 @@ func registerAll(s *Server) {
 	registerSonarr(s)
 	registerRadarr(s)
 	registerProwlarr(s)
+	registerBazarr(s)
 
 	registerOperations(s, "sonarr", arr.SonarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "radarr", arr.RadarrSpec, operationOpts{hasQueue: true})
