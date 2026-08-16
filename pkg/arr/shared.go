@@ -188,3 +188,98 @@ func ProwlarrIndexerStats(ctx context.Context, c *Client) ([]IndexerStat, error)
 	}
 	return env.Indexers, nil
 }
+
+// --- tags ---
+
+// Tag is a label attached to series, movies, indexers and profiles.
+type Tag struct {
+	ID    int    `json:"id"`
+	Label string `json:"label"`
+}
+
+// TagDetail reports how widely a tag is used. The upstream resource lists every
+// tagged id, which on a real library is thousands of integers; the counts are
+// what actually answer "is this tag still in use, and where?".
+type TagDetail struct {
+	ID                  int    `json:"id"`
+	Label               string `json:"label"`
+	MediaCount          int    `json:"mediaCount" jsonschema:"series or movies carrying this tag"`
+	IndexerCount        int    `json:"indexerCount,omitempty"`
+	DownloadClientCount int    `json:"downloadClientCount,omitempty"`
+	ImportListCount     int    `json:"importListCount,omitempty"`
+	NotificationCount   int    `json:"notificationCount,omitempty"`
+	DelayProfileCount   int    `json:"delayProfileCount,omitempty"`
+	ReleaseProfileCount int    `json:"releaseProfileCount,omitempty"`
+	AutoTagCount        int    `json:"autoTagCount,omitempty"`
+}
+
+// rawTagDetail mirrors the upstream resource. Sonarr and Radarr disagree on two
+// field names for the same concepts: Sonarr sends seriesIds and restrictionIds
+// where Radarr sends movieIds and releaseProfileIds. Decoding both keeps one
+// projection working for either service.
+type rawTagDetail struct {
+	ID                int    `json:"id"`
+	Label             string `json:"label"`
+	SeriesIDs         []int  `json:"seriesIds"`
+	MovieIDs          []int  `json:"movieIds"`
+	IndexerIDs        []int  `json:"indexerIds"`
+	DownloadClientIDs []int  `json:"downloadClientIds"`
+	ImportListIDs     []int  `json:"importListIds"`
+	NotificationIDs   []int  `json:"notificationIds"`
+	DelayProfileIDs   []int  `json:"delayProfileIds"`
+	RestrictionIDs    []int  `json:"restrictionIds"`
+	ReleaseProfileIDs []int  `json:"releaseProfileIds"`
+	AutoTagIDs        []int  `json:"autoTagIds"`
+}
+
+func (r rawTagDetail) toTagDetail() TagDetail {
+	return TagDetail{
+		ID:                  r.ID,
+		Label:               r.Label,
+		MediaCount:          len(r.SeriesIDs) + len(r.MovieIDs),
+		IndexerCount:        len(r.IndexerIDs),
+		DownloadClientCount: len(r.DownloadClientIDs),
+		ImportListCount:     len(r.ImportListIDs),
+		NotificationCount:   len(r.NotificationIDs),
+		DelayProfileCount:   len(r.DelayProfileIDs),
+		ReleaseProfileCount: len(r.RestrictionIDs) + len(r.ReleaseProfileIDs),
+		AutoTagCount:        len(r.AutoTagIDs),
+	}
+}
+
+// ListTags returns every tag configured on an instance.
+func ListTags(ctx context.Context, c *Client) ([]Tag, error) {
+	return GetJSON[[]Tag](ctx, c, "/tag")
+}
+
+// ListTagDetails returns each tag with a count of what carries it.
+func ListTagDetails(ctx context.Context, c *Client) ([]TagDetail, error) {
+	raw, err := GetJSON[[]rawTagDetail](ctx, c, "/tag/detail")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TagDetail, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.toTagDetail())
+	}
+	return out, nil
+}
+
+// CreateTag adds a tag and returns it with the id the service assigned.
+func CreateTag(ctx context.Context, c *Client, label string) (Tag, error) {
+	body, err := c.Post(ctx, "/tag", Tag{Label: label})
+	if err != nil {
+		return Tag{}, err
+	}
+	var out Tag
+	if err := unmarshal(body, &out); err != nil {
+		return Tag{}, err
+	}
+	return out, nil
+}
+
+// DeleteTag removes a tag, detaching it from everything that carried it.
+func DeleteTag(ctx context.Context, c *Client, id int) error {
+	_, err := c.Delete(ctx, "/tag/"+itoa(id))
+	return err
+}

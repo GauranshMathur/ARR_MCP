@@ -362,3 +362,31 @@ type Requested struct {
 	Requested bool   `json:"requested"`
 	Detail    string `json:"detail,omitempty"`
 }
+
+// --- media service tool inputs ---
+
+// LabelArgs is the input for tag creation.
+type LabelArgs struct {
+	InstanceArg
+	Label string `json:"label" jsonschema:"tag label, e.g. kids or 4k"`
+}
+
+// IDArgs is the input for tools that act on a single record by id.
+type IDArgs struct {
+	InstanceArg
+	ID int `json:"id" jsonschema:"internal id of the record"`
+}
+
+// --- media service tool outputs ---
+
+// TagList wraps tag results.
+type TagList struct {
+	Tags  []arr.Tag `json:"tags"`
+	Count int       `json:"count"`
+}
+
+// TagDetailList wraps tag usage results.
+type TagDetailList struct {
+	Tags  []arr.TagDetail `json:"tags"`
+	Count int             `json:"count"`
+}

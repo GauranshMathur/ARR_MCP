@@ -18,6 +18,9 @@ func registerAll(s *Server) {
 	registerOperations(s, "sonarr", arr.SonarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "radarr", arr.RadarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "prowlarr", arr.ProwlarrSpec, operationOpts{hasQueue: false})
+
+	registerMedia(s, "sonarr", arr.SonarrSpec, mediaOpts{noun: "series"})
+	registerMedia(s, "radarr", arr.RadarrSpec, mediaOpts{noun: "movies"})
 }
 
 func registerSonarr(s *Server) {
@@ -313,4 +316,59 @@ func registerOperations(s *Server, svc string, spec arr.ServiceSpec, opts operat
 type operationOpts struct {
 	// hasQueue is false for Prowlarr, which has no download queue or library.
 	hasQueue bool
+}
+
+// mediaOpts records how a media service names the things it manages, so the
+// tools registered for Sonarr and Radarr describe themselves accurately.
+type mediaOpts struct {
+	// noun is what the service manages: "series" or "movies".
+	noun string
+}
+
+// registerMedia adds the tools Sonarr and Radarr share. Both expose the same
+// settings, tag and library-maintenance endpoints under /api/v3, so registering
+// them from one place is what keeps the two services at parity.
+func registerMedia(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
+	registerTags(s, svc, spec, opts)
+}
+
+// registerTags adds tag listing and management.
+func registerTags(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_tags",
+		description: "List the tags configured in " + svc + ". Tags organise " + opts.noun + " and scope profiles, indexers and notifications.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (TagList, error) {
+		tags, err := arr.ListTags(ctx, c)
+		return TagList{Tags: tags, Count: len(tags)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_tag_details",
+		description: "List " + svc + " tags with a count of how many " + opts.noun + ", indexers and lists carry each one. Use to find unused tags.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (TagDetailList, error) {
+		tags, err := arr.ListTagDetails(ctx, c)
+		return TagDetailList{Tags: tags, Count: len(tags)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_create_tag",
+		description: "Create a tag in " + svc + ". Returns the id needed to apply it to " + opts.noun + ".",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in LabelArgs) (arr.Tag, error) {
+		return arr.CreateTag(ctx, c, in.Label)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: svc + "_delete_tag",
+		description: "Delete a tag from " + svc + ". This detaches it from every " +
+			opts.noun + ", profile and indexer that carried it.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in IDArgs) (Deleted, error) {
+		if err := arr.DeleteTag(ctx, c, in.ID); err != nil {
+			return Deleted{ID: in.ID}, err
+		}
+		return Deleted{ID: in.ID, Deleted: true}, nil
+	})
 }

@@ -407,3 +407,75 @@ func TestBazarrDeleteToolRequiresSubtitlePath(t *testing.T) {
 		t.Errorf("upstream contacted %d times for a pathless delete", *hits)
 	}
 }
+
+// recordingArr serves a canned body and records the paths it was asked for.
+func recordingArr(t *testing.T, body string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &paths
+}
+
+// mediaCfg configures one Sonarr and one Radarr instance against srv.
+func mediaCfg(url string) *config.Config {
+	return cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: url, APIKey: "k", Default: true}},
+		"radarr": {{Name: "main", URL: url, APIKey: "k", Default: true}},
+	}, permsFull)
+}
+
+// Tag management must exist for both media services, not just one.
+func TestTagToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_list_tags", "sonarr_tag_details", "sonarr_create_tag", "sonarr_delete_tag",
+		"radarr_list_tags", "radarr_tag_details", "radarr_create_tag", "radarr_delete_tag",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+func TestCreateTagToolPostsToTheTagEndpoint(t *testing.T) {
+	srv, paths := recordingArr(t, `{"id":4,"label":"kids"}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "radarr_create_tag",
+		Arguments: map[string]any{"label": "kids"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "POST /api/v3/tag" {
+		t.Errorf("upstream calls = %v, want one POST /api/v3/tag", *paths)
+	}
+}
+
+// Deleting a tag detaches it from every series that carried it, so it must be
+// gated as destructive rather than a plain write.
+func TestDeleteTagIsHiddenInReadOnlyMode(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	cs := connect(t, cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeReadOnly, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}))
+
+	names := toolNames(t, cs)
+	if has(names, "sonarr_delete_tag") {
+		t.Error("readonly mode must not expose sonarr_delete_tag")
+	}
+	if !has(names, "sonarr_list_tags") {
+		t.Error("readonly mode must still expose sonarr_list_tags")
+	}
+}
