@@ -132,6 +132,35 @@ Same shape with movies: `radarr_list_movies`, `radarr_search_movies`, `radarr_ca
 
 Services with no configured instances register no tools at all, so the advertised list always reflects what is actually reachable.
 
+## Scope
+
+### Planned
+
+Bazarr, Jellyseerr, Maintainerr, Cleanuparr, Notifiarr and Jellyfin. Each is
+described by a `ServiceSpec` rather than a bespoke client, so they share the
+transport, the instance registry and the permission model.
+
+### Not planned: download clients (NZBGet, SABnzbd, qBittorrent)
+
+Download clients are deliberately out of scope, for two reasons.
+
+**You already have queue visibility.** `sonarr_queue` and `radarr_queue` report
+what is downloading, its status, size, time remaining and error message —
+because the \*arr apps track download client state themselves.
+`sonarr_delete_queue_item` can drop a stuck download and blocklist the release,
+with `removeFromClient` telling the download client to discard it too. That
+covers the operations people actually want, routed through the app that owns
+the decision.
+
+**The cost is disproportionate.** NZBGet speaks JSON-RPC over HTTP Basic auth,
+SABnzbd uses a query-parameter `mode=` API, and qBittorrent needs cookie
+session auth. None of them fit the `ServiceSpec` model, so each would be a
+separate client with its own auth handling, response shapes and tests — a large
+amount of surface area to duplicate a capability the \*arr tools already expose.
+
+If you need to drive a download client directly, do it through its own UI or a
+dedicated MCP server.
+
 ## CLI
 
 ```
