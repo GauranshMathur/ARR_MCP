@@ -70,7 +70,7 @@ jobs:
           build-args: VERSION=${{ steps.version.outputs.version }}
 
       - name: Trivy scan (gate)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: scan-target:${{ steps.version.outputs.version }}
           format: table
@@ -80,7 +80,7 @@ jobs:
 
       - name: Trivy scan (SARIF)
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: scan-target:${{ steps.version.outputs.version }}
           format: sarif

@@ -51,9 +51,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # v2 of the linter is required: .golangci.yml uses the v2 schema.
+          version: v2.12.2
 
   build:
     name: Build
