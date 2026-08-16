@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/GauranshMathur/ARR_MCP/compare/v0.3.0...v1.0.0) (2026-08-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* the command package moved from ./cmd/server to ./cmd/arr-mcp. Update `go install github.com/GauranshMathur/ARR_MCP/cmd/arr-mcp@latest` and `go build -o arr-mcp ./cmd/arr-mcp`. Users of the container image are unaffected -- the entrypoint and every flag are unchanged.
+
+### Features
+
+* rename cmd/server to cmd/arr-mcp ([a9519a6](https://github.com/GauranshMathur/ARR_MCP/commit/a9519a6687f8cfe4403c1eeb28b88f8311d02ee9))
+
 ## [0.3.0](https://github.com/GauranshMathur/ARR_MCP/compare/v0.2.0...v0.3.0) (2026-08-16)
 
 
