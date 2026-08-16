@@ -1,11 +1,21 @@
 # ARR-MCP configuration.
 #
-# Copy to config.yaml and edit. Secrets should stay in environment variables and
-# be referenced as ${VAR} so this file is safe to commit or mount from a
-# ConfigMap. An unset variable is a startup error, never a silent empty value.
+# Copy to config.yaml and edit, then run with --config config.yaml (or set
+# ARR_MCP_CONFIG to its path). You only need this file to run more than one
+# instance of a service, or to set per-instance permissions — a single Sonarr,
+# Radarr, Prowlarr and Bazarr can be configured entirely from <SERVICE>_URL and
+# <SERVICE>_API_KEY environment variables with no file at all.
+#
+# This file supersedes those environment variables rather than merging with
+# them: once --config is passed, every instance comes from here.
+#
+# Secrets should stay in environment variables and be referenced as ${VAR} so
+# this file is safe to commit or mount from a ConfigMap. An unset or empty
+# variable is a startup error, never a silent empty value.
 
 server:
   # stdio for desktop MCP clients, http for a shared/in-cluster deployment.
+  # Command-line flags override everything in this block.
   transport: stdio
   addr: 0.0.0.0:8080
   logLevel: info
@@ -20,8 +30,18 @@ permissions:
   confirmScope: write
   # What to do when the MCP client cannot prompt the user. `deny` fails closed,
   # so a client lacking elicitation support never gets silent write access.
+  # Set `allow` only deliberately: it turns `confirm` into `full` for any such
+  # client.
   fallback: deny
 
+# Supported services: sonarr, radarr, prowlarr, bazarr. Anything else is
+# rejected at startup rather than ignored, so a typo is caught immediately.
+#
+# Instance names must be unique within a service and are advertised to the model
+# as a schema enum, so it picks from a closed set. At most one instance per
+# service may be `default`; a tool call that omits `instance` uses it. With
+# several instances and no default, such a call fails with a message listing the
+# valid names rather than guessing.
 services:
   sonarr:
     - name: main
