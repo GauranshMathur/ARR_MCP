@@ -1,21 +1,132 @@
-name: Release Please
+name: Release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
   release-please:
     name: Maintain release PR
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       # Accumulates conventional commits into a version-bump PR. Merging that PR
-      # tags the release, which is what triggers release.yml to publish images.
+      # makes this same run tag the release, which the publish job below picks up.
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Build, scan, publish
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+
+      - name: Normalise image name
+        id: img
+        run: echo "name=$(echo '${{ github.repository_owner }}/arr-mcp' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.img.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.tag }}
+            type=raw,value=latest
+
+      # Build one arch first so it can be scanned before anything is published.
+      # Pushing first would leave a vulnerable tag publicly pullable for however
+      # long a fix takes.
+      - name: Build amd64 image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: scan-target:${{ needs.release-please.outputs.tag }}
+          build-args: VERSION=${{ needs.release-please.outputs.tag }}
+
+      - name: Trivy scan (gate)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: scan-target:${{ needs.release-please.outputs.tag }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+      - name: Trivy scan (SARIF)
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: scan-target:${{ needs.release-please.outputs.tag }}
+          format: sarif
+          output: trivy-image.sarif
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH,MEDIUM
+
+      - name: Upload image scan results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ needs.release-please.outputs.tag }}
+          provenance: true
+          sbom: true
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published ${{ needs.release-please.outputs.tag }}"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
