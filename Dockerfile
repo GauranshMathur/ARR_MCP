@@ -15,7 +15,7 @@ ARG VERSION=dev
 # CGO_ENABLED=0 produces a static binary, which is what lets the final stage be
 # a distroless image with no libc.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -X github.com/GauranshMathur/ARR_MCP/pkg/server.Version=${VERSION}" \
+    go build -trimpath -ldflags "-s -w -X github.com/GauranshMathur/ARR_MCP/pkg/server.ldflagsVersion=${VERSION}" \
     -o /out/arr-mcp ./cmd/arr-mcp
 
 FROM gcr.io/distroless/static-debian12:nonroot
