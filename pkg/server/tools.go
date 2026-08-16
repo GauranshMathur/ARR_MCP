@@ -390,3 +390,34 @@ type TagDetailList struct {
 	Tags  []arr.TagDetail `json:"tags"`
 	Count int             `json:"count"`
 }
+
+// CustomFormatList wraps custom format results.
+type CustomFormatList struct {
+	Formats []arr.CustomFormat `json:"formats"`
+	Count   int                `json:"count"`
+}
+
+// DelayProfileList wraps delay profile results.
+type DelayProfileList struct {
+	Profiles []arr.DelayProfile `json:"profiles"`
+	Count    int                `json:"count"`
+}
+
+// ReleaseProfileList wraps release profile results.
+type ReleaseProfileList struct {
+	Profiles []arr.ReleaseProfile `json:"profiles"`
+	Count    int                  `json:"count"`
+}
+
+// ProviderList wraps indexer, download client, import list and notification
+// results, which all share the upstream provider shape.
+type ProviderList struct {
+	Providers []arr.Provider `json:"providers"`
+	Count     int            `json:"count"`
+}
+
+// QualityDefinitionList wraps quality size limit results.
+type QualityDefinitionList struct {
+	Definitions []arr.QualityDefinition `json:"definitions"`
+	Count       int                     `json:"count"`
+}

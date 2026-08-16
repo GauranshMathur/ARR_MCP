@@ -2,7 +2,10 @@ package arr
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
+	"strings"
 )
 
 // HealthIssue is a warning or error reported by a service's health checks.
@@ -282,4 +285,297 @@ func CreateTag(ctx context.Context, c *Client, label string) (Tag, error) {
 func DeleteTag(ctx context.Context, c *Client, id int) error {
 	_, err := c.Delete(ctx, "/tag/"+itoa(id))
 	return err
+}
+
+// --- profiles and configuration ---
+
+// termList decodes a release profile term set. Current releases send an array
+// of strings, older ones sent a single comma-separated string; accepting only
+// one shape would fail the entire call against the other.
+type termList []string
+
+// UnmarshalJSON accepts either a JSON array of strings or one delimited string.
+func (t *termList) UnmarshalJSON(data []byte) error {
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		*t = list
+		return nil
+	}
+	var joined string
+	if err := json.Unmarshal(data, &joined); err != nil {
+		return fmt.Errorf("release profile terms are neither an array nor a string: %s", data)
+	}
+	*t = nil
+	for _, part := range strings.Split(joined, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			*t = append(*t, trimmed)
+		}
+	}
+	return nil
+}
+
+// CustomFormat is the trimmed view of a custom format. The upstream resource
+// embeds every matching rule with its regular expressions; a real Sonarr
+// returns nearly 300 KB for the full list, so only the identity and the rule
+// count survive the projection.
+type CustomFormat struct {
+	ID                  int    `json:"id"`
+	Name                string `json:"name"`
+	IncludeWhenRenaming bool   `json:"includeCustomFormatWhenRenaming"`
+	SpecificationCount  int    `json:"specificationCount" jsonschema:"number of matching rules in this format"`
+}
+
+// rawCustomFormat mirrors the upstream payload before trimming.
+type rawCustomFormat struct {
+	ID                  int               `json:"id"`
+	Name                string            `json:"name"`
+	IncludeWhenRenaming bool              `json:"includeCustomFormatWhenRenaming"`
+	Specifications      []json.RawMessage `json:"specifications"`
+}
+
+// DelayProfile decides how long to wait before grabbing a release.
+type DelayProfile struct {
+	ID                             int    `json:"id"`
+	PreferredProtocol              string `json:"preferredProtocol,omitempty" jsonschema:"usenet or torrent"`
+	UsenetDelay                    int    `json:"usenetDelay" jsonschema:"minutes to wait before grabbing a usenet release"`
+	TorrentDelay                   int    `json:"torrentDelay" jsonschema:"minutes to wait before grabbing a torrent"`
+	BypassIfHighestQuality         bool   `json:"bypassIfHighestQuality"`
+	BypassIfAboveCustomFormatScore bool   `json:"bypassIfAboveCustomFormatScore"`
+	MinimumCustomFormatScore       int    `json:"minimumCustomFormatScore,omitempty"`
+	Order                          int    `json:"order,omitempty"`
+	Tags                           []int  `json:"tags,omitempty" jsonschema:"tag ids this profile applies to; empty means the default profile"`
+}
+
+// ReleaseProfile accepts or rejects releases by term.
+type ReleaseProfile struct {
+	ID        int      `json:"id"`
+	Name      string   `json:"name,omitempty"`
+	Enabled   bool     `json:"enabled"`
+	Required  []string `json:"required,omitempty" jsonschema:"terms a release title must contain"`
+	Ignored   []string `json:"ignored,omitempty" jsonschema:"terms that reject a release"`
+	IndexerID int      `json:"indexerId,omitempty" jsonschema:"indexer this profile is limited to; 0 means all"`
+	Tags      []int    `json:"tags,omitempty"`
+}
+
+// rawReleaseProfile mirrors the upstream payload, tolerating both term shapes.
+type rawReleaseProfile struct {
+	ID        int      `json:"id"`
+	Name      string   `json:"name"`
+	Enabled   bool     `json:"enabled"`
+	Required  termList `json:"required"`
+	Ignored   termList `json:"ignored"`
+	IndexerID int      `json:"indexerId"`
+	Tags      []int    `json:"tags"`
+}
+
+// Provider is the trimmed view of a configured indexer, download client,
+// import list or notification connection. These resources all share one shape
+// whose `fields` array holds the connection settings — including indexer API
+// keys, download client passwords and notification webhook URLs. That array is
+// deliberately dropped: nothing here should hand a model another service's
+// credentials.
+type Provider struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	Implementation string `json:"implementation,omitempty"`
+	Protocol       string `json:"protocol,omitempty" jsonschema:"usenet or torrent, for indexers and download clients"`
+	Enabled        bool   `json:"enabled"`
+	Priority       int    `json:"priority,omitempty"`
+	Tags           []int  `json:"tags,omitempty"`
+
+	SupportsSearch          bool `json:"supportsSearch,omitempty"`
+	EnableRSS               bool `json:"enableRss,omitempty"`
+	EnableAutomaticSearch   bool `json:"enableAutomaticSearch,omitempty"`
+	EnableInteractiveSearch bool `json:"enableInteractiveSearch,omitempty"`
+
+	RootFolderPath   string `json:"rootFolderPath,omitempty" jsonschema:"import lists only"`
+	QualityProfileID int    `json:"qualityProfileId,omitempty" jsonschema:"import lists only"`
+}
+
+// rawProvider mirrors the fields of the upstream provider resources that are
+// safe to expose. `fields` is absent by design, so it cannot leak by accident.
+type rawProvider struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	Implementation string `json:"implementation"`
+	Protocol       string `json:"protocol"`
+	Priority       int    `json:"priority"`
+	Tags           []int  `json:"tags"`
+
+	// Enable is the download client flag; Enabled and EnableAuto are Radarr's
+	// import list flags and EnableAutomaticAdd is Sonarr's.
+	Enable             bool `json:"enable"`
+	Enabled            bool `json:"enabled"`
+	EnableAuto         bool `json:"enableAuto"`
+	EnableAutomaticAdd bool `json:"enableAutomaticAdd"`
+
+	SupportsSearch          bool `json:"supportsSearch"`
+	EnableRSS               bool `json:"enableRss"`
+	EnableAutomaticSearch   bool `json:"enableAutomaticSearch"`
+	EnableInteractiveSearch bool `json:"enableInteractiveSearch"`
+
+	RootFolderPath   string `json:"rootFolderPath"`
+	QualityProfileID int    `json:"qualityProfileId"`
+}
+
+// toProvider projects an upstream provider, collapsing the four different
+// "is this on?" flags the services use into one answer.
+func (r rawProvider) toProvider() Provider {
+	return Provider{
+		ID:             r.ID,
+		Name:           r.Name,
+		Implementation: r.Implementation,
+		Protocol:       r.Protocol,
+		Enabled: r.Enable || r.Enabled || r.EnableAutomaticAdd || r.EnableAuto ||
+			r.EnableRSS || r.EnableAutomaticSearch || r.EnableInteractiveSearch,
+		Priority:                r.Priority,
+		Tags:                    r.Tags,
+		SupportsSearch:          r.SupportsSearch,
+		EnableRSS:               r.EnableRSS,
+		EnableAutomaticSearch:   r.EnableAutomaticSearch,
+		EnableInteractiveSearch: r.EnableInteractiveSearch,
+		RootFolderPath:          r.RootFolderPath,
+		QualityProfileID:        r.QualityProfileID,
+	}
+}
+
+// NamingConfig is the file and folder naming policy. The Sonarr-only and
+// Radarr-only fields are both present and omitted when empty, because the two
+// services describe the same setting with different names.
+//
+// colonReplacementFormat is deliberately absent: Sonarr sends it as an integer
+// and Radarr as a string, so no single Go field decodes both.
+type NamingConfig struct {
+	ID                       int    `json:"id"`
+	ReplaceIllegalCharacters bool   `json:"replaceIllegalCharacters"`
+	RenameEpisodes           bool   `json:"renameEpisodes,omitempty" jsonschema:"Sonarr only"`
+	RenameMovies             bool   `json:"renameMovies,omitempty" jsonschema:"Radarr only"`
+	StandardEpisodeFormat    string `json:"standardEpisodeFormat,omitempty"`
+	DailyEpisodeFormat       string `json:"dailyEpisodeFormat,omitempty"`
+	AnimeEpisodeFormat       string `json:"animeEpisodeFormat,omitempty"`
+	SeriesFolderFormat       string `json:"seriesFolderFormat,omitempty"`
+	SeasonFolderFormat       string `json:"seasonFolderFormat,omitempty"`
+	SpecialsFolderFormat     string `json:"specialsFolderFormat,omitempty"`
+	StandardMovieFormat      string `json:"standardMovieFormat,omitempty"`
+	MovieFolderFormat        string `json:"movieFolderFormat,omitempty"`
+}
+
+// QualityDefinition is the size policy for one quality level.
+type QualityDefinition struct {
+	ID            int      `json:"id"`
+	Title         string   `json:"title"`
+	Quality       string   `json:"quality,omitempty"`
+	Resolution    int      `json:"resolution,omitempty"`
+	MinSize       *float64 `json:"minSize,omitempty" jsonschema:"megabytes per minute; null means no lower limit"`
+	MaxSize       *float64 `json:"maxSize,omitempty" jsonschema:"megabytes per minute; null means unlimited"`
+	PreferredSize *float64 `json:"preferredSize,omitempty"`
+}
+
+// rawQualityDefinition mirrors the upstream payload, whose quality name and
+// resolution sit one level down.
+type rawQualityDefinition struct {
+	ID      int    `json:"id"`
+	Title   string `json:"title"`
+	Quality struct {
+		Name       string `json:"name"`
+		Resolution int    `json:"resolution"`
+	} `json:"quality"`
+	MinSize       *float64 `json:"minSize"`
+	MaxSize       *float64 `json:"maxSize"`
+	PreferredSize *float64 `json:"preferredSize"`
+}
+
+// ListCustomFormats returns the custom formats configured on an instance.
+func ListCustomFormats(ctx context.Context, c *Client) ([]CustomFormat, error) {
+	raw, err := GetJSON[[]rawCustomFormat](ctx, c, "/customformat")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]CustomFormat, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, CustomFormat{
+			ID:                  r.ID,
+			Name:                r.Name,
+			IncludeWhenRenaming: r.IncludeWhenRenaming,
+			SpecificationCount:  len(r.Specifications),
+		})
+	}
+	return out, nil
+}
+
+// ListDelayProfiles returns the configured grab delay profiles.
+func ListDelayProfiles(ctx context.Context, c *Client) ([]DelayProfile, error) {
+	return GetJSON[[]DelayProfile](ctx, c, "/delayprofile")
+}
+
+// ListReleaseProfiles returns the configured release term profiles.
+func ListReleaseProfiles(ctx context.Context, c *Client) ([]ReleaseProfile, error) {
+	raw, err := GetJSON[[]rawReleaseProfile](ctx, c, "/releaseprofile")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReleaseProfile, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, ReleaseProfile{
+			ID: r.ID, Name: r.Name, Enabled: r.Enabled,
+			Required: r.Required, Ignored: r.Ignored,
+			IndexerID: r.IndexerID, Tags: r.Tags,
+		})
+	}
+	return out, nil
+}
+
+// listProviders fetches one of the provider-shaped endpoints and trims it.
+func listProviders(ctx context.Context, c *Client, path string) ([]Provider, error) {
+	raw, err := GetJSON[[]rawProvider](ctx, c, path)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Provider, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.toProvider())
+	}
+	return out, nil
+}
+
+// ListIndexers returns the indexers a media service searches.
+func ListIndexers(ctx context.Context, c *Client) ([]Provider, error) {
+	return listProviders(ctx, c, "/indexer")
+}
+
+// ListDownloadClients returns the configured download clients.
+func ListDownloadClients(ctx context.Context, c *Client) ([]Provider, error) {
+	return listProviders(ctx, c, "/downloadclient")
+}
+
+// ListImportLists returns the configured import lists.
+func ListImportLists(ctx context.Context, c *Client) ([]Provider, error) {
+	return listProviders(ctx, c, "/importlist")
+}
+
+// ListNotifications returns the configured notification connections.
+func ListNotifications(ctx context.Context, c *Client) ([]Provider, error) {
+	return listProviders(ctx, c, "/notification")
+}
+
+// GetNamingConfig returns the file and folder naming policy.
+func GetNamingConfig(ctx context.Context, c *Client) (NamingConfig, error) {
+	return GetJSON[NamingConfig](ctx, c, "/config/naming")
+}
+
+// ListQualityDefinitions returns the size limits for each quality level.
+func ListQualityDefinitions(ctx context.Context, c *Client) ([]QualityDefinition, error) {
+	raw, err := GetJSON[[]rawQualityDefinition](ctx, c, "/qualitydefinition")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]QualityDefinition, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, QualityDefinition{
+			ID: r.ID, Title: r.Title,
+			Quality: r.Quality.Name, Resolution: r.Quality.Resolution,
+			MinSize: r.MinSize, MaxSize: r.MaxSize, PreferredSize: r.PreferredSize,
+		})
+	}
+	return out, nil
 }

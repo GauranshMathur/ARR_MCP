@@ -479,3 +479,43 @@ func TestDeleteTagIsHiddenInReadOnlyMode(t *testing.T) {
 		t.Error("readonly mode must still expose sonarr_list_tags")
 	}
 }
+
+func TestSettingsToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, suffix := range []string{
+		"_list_custom_formats", "_list_delay_profiles", "_list_release_profiles",
+		"_list_indexers", "_list_download_clients", "_list_import_lists",
+		"_list_notifications", "_naming_config", "_list_quality_definitions",
+	} {
+		for _, svc := range []string{"sonarr", "radarr"} {
+			if !has(names, svc+suffix) {
+				t.Errorf("tool %q not advertised", svc+suffix)
+			}
+		}
+	}
+}
+
+// End to end, an indexer's own API key must never reach the model: the tool
+// result is the last place a projection mistake would show up.
+func TestListIndexersToolDoesNotLeakProviderCredentials(t *testing.T) {
+	srv, _ := fakeArr(t, `[{"id":1,"name":"NZBgeek","implementation":"Newznab","protocol":"usenet",
+	  "enableRss":true,"fields":[{"name":"apiKey","value":"leaked-indexer-key"}]}]`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "sonarr_list_indexers"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	body := contentText(res)
+	if !strings.Contains(body, "NZBgeek") {
+		t.Fatalf("result does not contain the indexer name: %s", body)
+	}
+	if strings.Contains(body, "leaked-indexer-key") {
+		t.Fatalf("indexer credentials reached the client: %s", body)
+	}
+}

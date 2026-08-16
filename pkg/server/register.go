@@ -330,6 +330,7 @@ type mediaOpts struct {
 // them from one place is what keeps the two services at parity.
 func registerMedia(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
 	registerTags(s, svc, spec, opts)
+	registerSettings(s, svc, spec, opts)
 }
 
 // registerTags adds tag listing and management.
@@ -370,5 +371,90 @@ func registerTags(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
 			return Deleted{ID: in.ID}, err
 		}
 		return Deleted{ID: in.ID, Deleted: true}, nil
+	})
+}
+
+// registerSettings adds the profile and configuration listings. These are the
+// settings a power user asks about by name, and every one of them is identical
+// between Sonarr and Radarr apart from the wording of the description.
+func registerSettings(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_custom_formats",
+		description: "List " + svc + " custom formats with the number of rules in each. Custom formats score releases during grabbing.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (CustomFormatList, error) {
+		formats, err := arr.ListCustomFormats(ctx, c)
+		return CustomFormatList{Formats: formats, Count: len(formats)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_delay_profiles",
+		description: "List " + svc + " delay profiles, which decide how long to wait before grabbing a usenet or torrent release.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (DelayProfileList, error) {
+		profiles, err := arr.ListDelayProfiles(ctx, c)
+		return DelayProfileList{Profiles: profiles, Count: len(profiles)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_release_profiles",
+		description: "List " + svc + " release profiles, which require or reject releases by term.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ReleaseProfileList, error) {
+		profiles, err := arr.ListReleaseProfiles(ctx, c)
+		return ReleaseProfileList{Profiles: profiles, Count: len(profiles)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_indexers",
+		description: "List the indexers " + svc + " searches. Connection settings and API keys are not returned.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ProviderList, error) {
+		providers, err := arr.ListIndexers(ctx, c)
+		return ProviderList{Providers: providers, Count: len(providers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_download_clients",
+		description: "List the download clients " + svc + " sends grabs to. Credentials are not returned.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ProviderList, error) {
+		providers, err := arr.ListDownloadClients(ctx, c)
+		return ProviderList{Providers: providers, Count: len(providers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_import_lists",
+		description: "List the import lists that add " + opts.noun + " to " + svc + " automatically.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ProviderList, error) {
+		providers, err := arr.ListImportLists(ctx, c)
+		return ProviderList{Providers: providers, Count: len(providers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_notifications",
+		description: "List the notification connections configured in " + svc + ". Webhook URLs and tokens are not returned.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ProviderList, error) {
+		providers, err := arr.ListNotifications(ctx, c)
+		return ProviderList{Providers: providers, Count: len(providers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_naming_config",
+		description: "Report the " + svc + " file and folder naming format strings.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (arr.NamingConfig, error) {
+		return arr.GetNamingConfig(ctx, c)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_quality_definitions",
+		description: "List " + svc + " quality definitions with their size limits in megabytes per minute.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (QualityDefinitionList, error) {
+		defs, err := arr.ListQualityDefinitions(ctx, c)
+		return QualityDefinitionList{Definitions: defs, Count: len(defs)}, err
 	})
 }
