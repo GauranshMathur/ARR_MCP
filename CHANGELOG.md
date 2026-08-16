@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.2](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.1...v1.0.2) (2026-08-16)
+
+
+### Bug Fixes
+
+* **arr:** stop credential redaction from mangling error messages ([f72f995](https://github.com/GauranshMathur/ARR_MCP/commit/f72f99591fe2dcff20c14ac295555f5da758af20))
+* **arr:** stop credential redaction from mangling error messages ([2abd089](https://github.com/GauranshMathur/ARR_MCP/commit/2abd0899cfc7d1bd7ba732504551cbc90b67254a))
+
+
+### Documentation
+
+* add a pasteable AI-assisted install guide ([91c2795](https://github.com/GauranshMathur/ARR_MCP/commit/91c2795b403903859ea59886d060910e6f43fce4))
+* add a pasteable AI-assisted install guide ([1248f85](https://github.com/GauranshMathur/ARR_MCP/commit/1248f856ed260dc8ad97ab6f885520a2a3f925d8))
+* link the AI install guide from the README and client guide ([98f49cd](https://github.com/GauranshMathur/ARR_MCP/commit/98f49cddb8ce646f2855a85955de468586935141))
+
 ## [1.0.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.0...v1.0.1) (2026-08-16)
 
 
