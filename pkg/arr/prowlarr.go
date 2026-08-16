@@ -1,143 +1,43 @@
 package arr
 
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
-	"strings"
-)
+import "context"
 
-// ProwlarrClient extends the base ARR client with Prowlarr-specific functionality
-type ProwlarrClient struct {
-	*Client
+// Indexer is the trimmed view of a Prowlarr indexer.
+type Indexer struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Protocol string `json:"protocol,omitempty" jsonschema:"usenet or torrent"`
+	Enable   bool   `json:"enable"`
+	Priority int    `json:"priority,omitempty"`
 }
 
-// NewProwlarrClient creates a new Prowlarr client
-func NewProwlarrClient(baseURL, apiKey string) *ProwlarrClient {
-	return &ProwlarrClient{
-		Client: NewClient(baseURL, apiKey, "Prowlarr"),
-	}
+// SearchResult is the trimmed view of a Prowlarr indexer search hit.
+type SearchResult struct {
+	Title       string `json:"title"`
+	Indexer     string `json:"indexer,omitempty"`
+	Size        int64  `json:"size,omitempty" jsonschema:"release size in bytes"`
+	Seeders     int    `json:"seeders,omitempty"`
+	Protocol    string `json:"protocol,omitempty"`
+	PublishDate string `json:"publishDate,omitempty"`
 }
 
-// GetIndexers retrieves indexers from Prowlarr
-func (c *ProwlarrClient) GetIndexers() ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(http.MethodGet, "/api/v1/indexer", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers from Prowlarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+// ProwlarrListIndexers returns the configured indexers.
+func ProwlarrListIndexers(ctx context.Context, c *Client) ([]Indexer, error) {
+	return GetJSON[[]Indexer](ctx, c, "/indexer")
 }
 
-// GetIndexersWithContext retrieves indexers from Prowlarr with context
-func (c *ProwlarrClient) GetIndexersWithContext(ctx context.Context) ([]map[string]interface{}, error) {
-	respBody, err := c.doRequestWithContext(ctx, http.MethodGet, "/api/v1/indexer", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get indexers from Prowlarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// GetCategories retrieves categories from Prowlarr
-func (c *ProwlarrClient) GetCategories() ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(http.MethodGet, "/api/v1/indexer/category", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get categories from Prowlarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// GetCategoriesWithContext retrieves categories from Prowlarr with context
-func (c *ProwlarrClient) GetCategoriesWithContext(ctx context.Context) ([]map[string]interface{}, error) {
-	respBody, err := c.doRequestWithContext(ctx, http.MethodGet, "/api/v1/indexer/category", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get categories from Prowlarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// Search performs a search through Prowlarr's indexers
-func (c *ProwlarrClient) Search(query string, categories []int) ([]map[string]interface{}, error) {
-	// Build the query parameters with proper URL encoding
-	params := url.Values{}
-	params.Add("query", query)
-	
-	// Add categories if provided
+// ProwlarrSearch searches all configured indexers for query.
+func ProwlarrSearch(ctx context.Context, c *Client, query string, categories []int, limit int) ([]SearchResult, error) {
+	q := Query{"query": query}
 	if len(categories) > 0 {
-		categoryStrings := make([]string, len(categories))
-		for i, cat := range categories {
-			categoryStrings[i] = strconv.Itoa(cat)
-		}
-		params.Add("categories", strings.Join(categoryStrings, ","))
+		q["categories"] = joinInts(categories)
 	}
-	
-	endpoint := "/api/v1/search?" + params.Encode()
-
-	respBody, err := c.doRequest(http.MethodGet, endpoint, nil)
+	results, err := GetJSON[[]SearchResult](ctx, c, "/search", q)
 	if err != nil {
-		return nil, fmt.Errorf("failed to search in Prowlarr: %w", err)
+		return nil, err
 	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
 	}
-
-	return result, nil
-}
-
-// SearchWithContext performs a search through Prowlarr's indexers with context
-func (c *ProwlarrClient) SearchWithContext(ctx context.Context, query string, categories []int) ([]map[string]interface{}, error) {
-	// Build the query parameters with proper URL encoding
-	params := url.Values{}
-	params.Add("query", query)
-	
-	// Add categories if provided
-	if len(categories) > 0 {
-		categoryStrings := make([]string, len(categories))
-		for i, cat := range categories {
-			categoryStrings[i] = strconv.Itoa(cat)
-		}
-		params.Add("categories", strings.Join(categoryStrings, ","))
-	}
-	
-	endpoint := "/api/v1/search?" + params.Encode()
-
-	respBody, err := c.doRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search in Prowlarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+	return results, nil
 }

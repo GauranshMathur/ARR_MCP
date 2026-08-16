@@ -1,284 +1,98 @@
 package arr
 
-import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
-)
+import "context"
 
-// SonarrClient extends the base ARR client with Sonarr-specific functionality
-type SonarrClient struct {
-	*Client
+// Series is the trimmed view of a Sonarr series returned to MCP clients.
+//
+// Sonarr's /api/v3/series objects carry ~40 fields each, including nested
+// `seasons`, `images`, `ratings` and `statistics` blocks. A library of 200
+// shows serialised in full is well over a megabyte, which would swamp the
+// model's context on a single list call and crowd out the actual conversation.
+// So we project down to the fields a user is plausibly asking about.
+//
+// TODO(field-selection): decide the exact field set. See ARR-MCP notes.
+type Series struct {
+	ID        int    `json:"id" jsonschema:"Sonarr's internal series id, used by other tools"`
+	Title     string `json:"title"`
+	Year      int    `json:"year,omitempty"`
+	Status    string `json:"status,omitempty" jsonschema:"continuing, ended, or upcoming"`
+	Monitored bool   `json:"monitored"`
+	TVDBID    int    `json:"tvdbId,omitempty" jsonschema:"TheTVDB id, required when adding the series"`
 }
 
-// NewSonarrClient creates a new Sonarr client
-func NewSonarrClient(baseURL, apiKey string) *SonarrClient {
-	return &SonarrClient{
-		Client: NewClient(baseURL, apiKey, "Sonarr"),
+// rawSeries mirrors the upstream Sonarr payload we care about before trimming.
+type rawSeries struct {
+	ID        int    `json:"id"`
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Status    string `json:"status"`
+	Monitored bool   `json:"monitored"`
+	TVDBID    int    `json:"tvdbId"`
+}
+
+// toSeries projects an upstream payload onto the trimmed view.
+func (r rawSeries) toSeries() Series {
+	return Series{
+		ID: r.ID, Title: r.Title, Year: r.Year,
+		Status: r.Status, Monitored: r.Monitored, TVDBID: r.TVDBID,
 	}
 }
 
-// GetSeries retrieves TV series from Sonarr
-func (c *SonarrClient) GetSeries() ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(http.MethodGet, "/api/v3/series", nil)
+// SonarrListSeries returns every series in the library.
+func SonarrListSeries(ctx context.Context, c *Client) ([]Series, error) {
+	raw, err := GetJSON[[]rawSeries](ctx, c, "/series")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get series from Sonarr: %w", err)
+		return nil, err
 	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+	return trimSeries(raw), nil
 }
 
-// GetSeriesWithContext retrieves TV series from Sonarr with context
-func (c *SonarrClient) GetSeriesWithContext(ctx context.Context) ([]map[string]interface{}, error) {
-	respBody, err := c.doRequestWithContext(ctx, http.MethodGet, "/api/v3/series", nil)
+// SonarrLookupSeries searches configured indexers for series matching term.
+func SonarrLookupSeries(ctx context.Context, c *Client, term string) ([]Series, error) {
+	raw, err := GetJSON[[]rawSeries](ctx, c, "/series/lookup", Query{"term": term})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get series from Sonarr: %w", err)
+		return nil, err
 	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+	return trimSeries(raw), nil
 }
 
-// GetSeriesById retrieves a specific TV series by ID from Sonarr
-func (c *SonarrClient) GetSeriesById(seriesId int) (map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("/api/v3/series/%d", seriesId)
-	respBody, err := c.doRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get series %d from Sonarr: %w", seriesId, err)
+// trimSeries projects a batch of upstream payloads.
+func trimSeries(raw []rawSeries) []Series {
+	out := make([]Series, 0, len(raw))
+	for _, r := range raw {
+		out = append(out, r.toSeries())
 	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+	return out
 }
 
-// GetSeriesByIdWithContext retrieves a specific TV series by ID from Sonarr with context
-func (c *SonarrClient) GetSeriesByIdWithContext(ctx context.Context, seriesId int) (map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("/api/v3/series/%d", seriesId)
-	respBody, err := c.doRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get series %d from Sonarr: %w", seriesId, err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+// AddSeriesRequest describes a series to add to a Sonarr library.
+type AddSeriesRequest struct {
+	TVDBID           int    `json:"tvdbId"`
+	Title            string `json:"title"`
+	QualityProfileID int    `json:"qualityProfileId"`
+	RootFolderPath   string `json:"rootFolderPath"`
+	Monitored        bool   `json:"monitored"`
+	SeasonFolder     bool   `json:"seasonFolder"`
+	AddOptions       struct {
+		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+	} `json:"addOptions"`
 }
 
-// SearchSeries searches for series in Sonarr
-func (c *SonarrClient) SearchSeries(term string) ([]map[string]interface{}, error) {
-	// Check if we should use GET or POST based on term length
-	if len(term) < 100 {
-		// For shorter terms, use the GET endpoint with URL encoding
-		params := url.Values{}
-		params.Add("term", term)
-		
-		endpoint := "/api/v3/series/lookup?" + params.Encode()
-		
-		respBody, err := c.doRequest(http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to search series in Sonarr: %w", err)
-		}
-
-		var result []map[string]interface{}
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("error parsing response: %w", err)
-		}
-
-		return result, nil
-	}
-	
-	// For longer terms, use POST to avoid URL length limitations
-	requestBody, err := json.Marshal(map[string]string{
-		"term": term,
-	})
+// SonarrAddSeries adds a series to the library and returns the created record.
+func SonarrAddSeries(ctx context.Context, c *Client, req AddSeriesRequest) (Series, error) {
+	body, err := c.Post(ctx, "/series", req)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request body: %w", err)
+		return Series{}, err
 	}
-
-	respBody, err := c.doRequest(http.MethodPost, "/api/v3/series/lookup", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to search series in Sonarr: %w", err)
+	var raw rawSeries
+	if err := unmarshal(body, &raw); err != nil {
+		return Series{}, err
 	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+	return raw.toSeries(), nil
 }
 
-// SearchSeriesWithContext searches for series in Sonarr with context
-func (c *SonarrClient) SearchSeriesWithContext(ctx context.Context, term string) ([]map[string]interface{}, error) {
-	// Check if we should use GET or POST based on term length
-	if len(term) < 100 {
-		// For shorter terms, use the GET endpoint with URL encoding
-		params := url.Values{}
-		params.Add("term", term)
-		
-		endpoint := "/api/v3/series/lookup?" + params.Encode()
-		
-		respBody, err := c.doRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to search series in Sonarr: %w", err)
-		}
-
-		var result []map[string]interface{}
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			return nil, fmt.Errorf("error parsing response: %w", err)
-		}
-
-		return result, nil
-	}
-	
-	// For longer terms, use POST to avoid URL length limitations
-	requestBody, err := json.Marshal(map[string]string{
-		"term": term,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error creating request body: %w", err)
-	}
-
-	respBody, err := c.doRequestWithContext(ctx, http.MethodPost, "/api/v3/series/lookup", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to search series in Sonarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// AddSeries adds a new series to Sonarr
-func (c *SonarrClient) AddSeries(seriesData map[string]interface{}) (map[string]interface{}, error) {
-	// Required fields for adding a series: tvdbId, title, qualityProfileId, rootFolderPath
-	requiredFields := []string{"tvdbId", "title", "qualityProfileId", "rootFolderPath"}
-	for _, field := range requiredFields {
-		if _, exists := seriesData[field]; !exists {
-			return nil, fmt.Errorf("missing required field for adding series: %s", field)
-		}
-	}
-
-	// Set default values if not provided
-	if _, exists := seriesData["monitored"]; !exists {
-		seriesData["monitored"] = true
-	}
-	if _, exists := seriesData["seasonFolder"]; !exists {
-		seriesData["seasonFolder"] = true
-	}
-	if _, exists := seriesData["addOptions"]; !exists {
-		seriesData["addOptions"] = map[string]interface{}{
-			"searchForMissingEpisodes": true,
-		}
-	}
-
-	requestBody, err := json.Marshal(seriesData)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request body: %w", err)
-	}
-
-	respBody, err := c.doRequest(http.MethodPost, "/api/v3/series", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to add series to Sonarr: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// AddSeriesWithContext adds a new series to Sonarr with context
-func (c *SonarrClient) AddSeriesWithContext(ctx context.Context, seriesData map[string]interface{}) (map[string]interface{}, error) {
-	// Required fields for adding a series: tvdbId, title, qualityProfileId, rootFolderPath
-	requiredFields := []string{"tvdbId", "title", "qualityProfileId", "rootFolderPath"}
-	for _, field := range requiredFields {
-		if _, exists := seriesData[field]; !exists {
-			return nil, fmt.Errorf("missing required field for adding series: %s", field)
-		}
-	}
-
-	// Set default values if not provided
-	if _, exists := seriesData["monitored"]; !exists {
-		seriesData["monitored"] = true
-	}
-	if _, exists := seriesData["seasonFolder"]; !exists {
-		seriesData["seasonFolder"] = true
-	}
-	if _, exists := seriesData["addOptions"]; !exists {
-		seriesData["addOptions"] = map[string]interface{}{
-			"searchForMissingEpisodes": true,
-		}
-	}
-
-	requestBody, err := json.Marshal(seriesData)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request body: %w", err)
-	}
-
-	respBody, err := c.doRequestWithContext(ctx, http.MethodPost, "/api/v3/series", bytes.NewBuffer(requestBody))
-	if err != nil {
-		return nil, fmt.Errorf("failed to add series to Sonarr: %w", err)
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// GetRootFolders retrieves available root folders from Sonarr
-func (c *SonarrClient) GetRootFolders() ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(http.MethodGet, "/api/v3/rootfolder", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get root folders from Sonarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
-}
-
-// GetQualityProfiles retrieves available quality profiles from Sonarr
-func (c *SonarrClient) GetQualityProfiles() ([]map[string]interface{}, error) {
-	respBody, err := c.doRequest(http.MethodGet, "/api/v3/qualityprofile", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get quality profiles from Sonarr: %w", err)
-	}
-
-	var result []map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("error parsing response: %w", err)
-	}
-
-	return result, nil
+// SonarrDeleteSeries removes a series, optionally deleting its files.
+func SonarrDeleteSeries(ctx context.Context, c *Client, id int, deleteFiles bool) error {
+	_, err := c.Delete(ctx, "/series/"+itoa(id), Query{"deleteFiles": btoa(deleteFiles)})
+	return err
 }
