@@ -3,7 +3,17 @@ name: Security
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   schedule:
     # Weekly, so newly disclosed vulnerabilities surface without a code change.
     - cron: "17 4 * * 1"
