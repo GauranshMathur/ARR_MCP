@@ -1,47 +1,110 @@
 # ARR-MCP
 
-An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, or any MCP client to Sonarr, Radarr and Prowlarr — including **multiple instances of each**.
+An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr and Bazarr — including **multiple instances of each**.
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **36 tools** across Sonarr, Radarr and Prowlarr
+- **49 tools** across Sonarr, Radarr, Prowlarr and Bazarr
 - **Single static binary**, distroless container, multi-arch image
 
-## Quick start
+**Jump to:** [60-second quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
 
-### Docker Compose
+## 60-second quickstart
+
+The shortest path from nothing to a working server. No config file, no clone — just
+environment variables and one container.
+
+**1. Collect one URL and one API key** for each service you want to expose. See
+[Find your API key](#find-your-api-key) if you don't know where they live.
+
+**2. Write them into a `.env` file:**
 
 ```bash
-git clone https://github.com/GauranshMathur/ARR_MCP.git
-cd ARR_MCP
-cp .env.example .env      # fill in your URLs and API keys
-docker compose up -d
+cat > .env <<'EOF'
+SONARR_URL=http://192.168.10.12:8989
+SONARR_API_KEY=your-sonarr-api-key
+RADARR_URL=http://192.168.10.14:7878
+RADARR_API_KEY=your-radarr-api-key
+EOF
 ```
 
-Then point your MCP client at `http://localhost:8080/mcp`.
+Any service you leave out is simply not exposed. One service is enough to start.
 
-### stdio (Claude Desktop, Claude Code, Cursor)
+**3. Check that the credentials work** before wiring up a client, so a mistake shows
+up as a clear error rather than as a client that mysteriously has no tools:
 
 ```bash
-claude mcp add arr -- docker run -i --rm --env-file /path/to/.env \
+docker run --rm --env-file .env ghcr.io/gauranshmathur/arr-mcp --check
+```
+
+```
+OK    sonarr/default (http://192.168.10.12:8989)
+OK    radarr/default (http://192.168.10.14:7878)
+```
+
+**4. Add it to your client.** For Claude Code:
+
+```bash
+claude mcp add arr -- docker run -i --rm --env-file /absolute/path/to/.env \
   ghcr.io/gauranshmathur/arr-mcp --transport stdio
 ```
 
-Or build from source:
+That is the whole setup. [docs/clients.md](docs/clients.md) has copy-pasteable blocks for
+Claude Desktop, Cursor, VS Code, Windsurf, Zed, Cline, Roo Code, Continue.dev, LibreChat,
+Goose and anything else that speaks MCP.
+
+> Use an **absolute** path for `--env-file`. Your MCP client starts the server from its own
+> working directory, which is rarely the one you were standing in when you created `.env`.
+
+### Prefer a long-running server?
+
+Run it once over HTTP and point every client at the same endpoint:
 
 ```bash
-go install github.com/GauranshMathur/ARR_MCP/cmd/server@latest
-claude mcp add arr -- server --transport stdio --config /path/to/config.yaml
+docker run -d --name arr-mcp --env-file .env -p 8080:8080 \
+  ghcr.io/gauranshmathur/arr-mcp
+curl -s localhost:8080/health   # {"status":"ok"}
 ```
+
+MCP is served at `http://localhost:8080/mcp`. The container defaults to
+`--transport http --addr 0.0.0.0:8080`, so no arguments are needed. If you cloned the
+repository, `docker compose up -d` does the same thing.
+
+## Find your API key
+
+Each service shows its key in its own web UI. The key is a long hex string; copy it
+exactly, with no surrounding whitespace.
+
+| Service | Where to click | Default port |
+|---|---|---|
+| Sonarr | Settings → General → **Security** → API Key | 8989 |
+| Radarr | Settings → General → **Security** → API Key | 7878 |
+| Prowlarr | Settings → General → **Security** → API Key | 9696 |
+| Bazarr | Settings → General → **Security** → API Key | 6767 |
+
+Every one of these is a *full-access* credential for that application. ARR-MCP never
+needs more than one key per instance, and the [permission model](#permissions) is what
+narrows down what the model can actually do with it.
+
+## Do I need a config file?
+
+No, unless you run more than one instance of a service.
+
+| You have | Use | Why |
+|---|---|---|
+| One Sonarr, one Radarr, one Prowlarr, one Bazarr | **Environment variables** | Nothing to disambiguate. `<SERVICE>_URL` and `<SERVICE>_API_KEY` is the whole configuration. |
+| Two Sonarrs (say `main` and `anime`), or a Bazarr per \*arr pair | **`config.yaml`** | Instances need names so tools can target them, and each can carry its own permission policy. |
+| One instance, but you want per-instance permissions or non-default server settings | **`config.yaml`** | The environment-variable path always builds a single instance named `default` with the global policy. |
+
+You can switch later without changing anything else: a config file supersedes the
+environment variables entirely, it does not merge with them.
 
 ## Configuration
 
-Two ways, depending on whether you need multiple instances.
-
 ### Environment variables (one instance per service)
 
-No config file needed:
+Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` and run **without** `--config`:
 
 ```bash
 SONARR_URL=http://192.168.10.12:8989
@@ -50,11 +113,19 @@ RADARR_URL=http://192.168.10.14:7878
 RADARR_API_KEY=...
 PROWLARR_URL=http://192.168.10.18:9696
 PROWLARR_API_KEY=...
+BAZARR_URL=http://192.168.10.16:6767
+BAZARR_API_KEY=...
 ```
+
+A service is configured only when **both** its variables are set; setting just one is
+treated as "not configured" rather than as an error. Each configured service gets a
+single instance named `default`. If no service ends up configured at all, startup fails
+with a message listing the variables it looked for.
 
 ### Config file (multiple instances)
 
-Copy `config.example.yaml` to `config.yaml`. Secrets stay in the environment and are referenced as `${VAR}`, so the file is safe to commit or mount from a ConfigMap:
+Copy `config.example.yaml` to `config.yaml`. Secrets stay in the environment and are
+referenced as `${VAR}`, so the file is safe to commit or mount from a ConfigMap:
 
 ```yaml
 services:
@@ -68,13 +139,45 @@ services:
       apiKey: ${SONARR_ANIME_API_KEY}
 ```
 
-Every tool then takes an optional `instance` argument. Omit it to use the one marked `default`. The configured names are advertised as a schema `enum`, so the model picks from a closed set rather than guessing:
+Every tool then takes an optional `instance` argument. Omit it to use the one marked
+`default`. The configured names are advertised as a schema `enum`, so the model picks
+from a closed set rather than guessing:
 
 ```
 sonarr_search_series{query: "Severance", instance: "anime"}
 ```
 
-> An unset `${VAR}` is a startup error, never a silent empty value — an empty API key would otherwise surface much later as a confusing 401.
+Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
+
+- Every instance needs a `name`, a `url` and an `apiKey`.
+- Instance names must be unique within a service, and at most one may be `default`.
+- With several instances and no `default`, a tool call that omits `instance` fails with a
+  message listing the valid names — it does not silently pick the first one.
+- Only `sonarr`, `radarr`, `prowlarr` and `bazarr` are accepted; anything else is rejected
+  rather than ignored, so a typo like `sonar:` is caught immediately.
+
+> An unset (or empty) `${VAR}` is a startup error, never a silent empty value — an empty
+> API key would otherwise surface much later as a confusing 401.
+
+### Server settings
+
+```yaml
+server:
+  transport: stdio        # stdio | http
+  addr: 0.0.0.0:8080      # only used by the http transport
+  logLevel: info          # debug | info | warn | error
+```
+
+Those are the defaults. Command-line flags override the file, so one mounted config can
+serve both a stdio and an HTTP deployment:
+
+```bash
+arr-mcp --config /etc/arr-mcp/config.yaml --transport http --addr 0.0.0.0:8080
+```
+
+Instead of passing `--config` you can set `ARR_MCP_CONFIG` to the same path. That is worth
+doing in containers: it means bare `arr-mcp --check` also finds the config, which is what
+makes the Docker healthcheck work.
 
 ## Permissions
 
@@ -93,9 +196,17 @@ permissions:
 | `confirm` | Mutating tools ask the user first, via MCP elicitation. **Default.** |
 | `full` | Everything runs immediately. |
 
-`confirmScope` selects what gets confirmed: `write` covers both writes and deletes, `destructive` covers deletes only.
+`confirmScope` selects what gets confirmed: `write` covers both writes and deletes,
+`destructive` covers deletes only.
 
-`fallback` decides what happens when the client **cannot** prompt — elicitation requires client support, and not every client has it. The default `deny` fails closed. Setting `allow` means a client without elicitation gets unprompted write access, so change it deliberately.
+`fallback` decides what happens when the client **cannot** prompt. Confirmation is
+delivered over MCP elicitation, which a client must advertise support for during
+initialisation, and many clients still don't. The default `deny` fails closed, because the
+alternative is worse than it looks: without it, connecting a client that lacks elicitation
+would quietly downgrade `confirm` mode into `full` — you would believe every write was
+being approved while none of them ever were. Setting `allow` grants that unprompted write
+access deliberately, which is a reasonable choice for a trusted local client but should be
+a decision, not an accident.
 
 Any instance can override the global policy:
 
@@ -107,7 +218,42 @@ Any instance can override the global policy:
       mode: readonly
 ```
 
-All tools also carry MCP `readOnlyHint` / `destructiveHint` annotations, so clients can render their own warnings independently of this gating.
+A tool is advertised if *any* instance of that service allows it; the per-instance policy
+is then applied when the call actually runs. So a read-only `anime` instance alongside a
+writable `main` still shows `sonarr_add_series` in the tool list, and refuses it for
+`anime` at call time.
+
+All tools also carry MCP `readOnlyHint` / `destructiveHint` annotations, so clients can
+render their own warnings independently of this gating.
+
+## Connecting a client
+
+Full copy-pasteable configuration for every client below lives in
+**[docs/clients.md](docs/clients.md)**. The two forms everything reduces to:
+
+**stdio** — the client launches the process and talks over stdin/stdout:
+
+```
+docker run -i --rm --env-file /absolute/path/to/.env ghcr.io/gauranshmathur/arr-mcp --transport stdio
+```
+
+The `-i` is required: without it Docker gives the container no stdin and the JSON-RPC
+handshake never completes.
+
+**HTTP** — the server runs somewhere and the client connects to it:
+
+```
+http://localhost:8080/mcp
+```
+
+`/health` on the same port answers `{"status":"ok"}` and is not part of the MCP protocol;
+it exists for container and Kubernetes probes.
+
+## Kubernetes
+
+Manifests for a Deployment, Service, ConfigMap and Secret template are in
+[`deploy/kubernetes/`](deploy/kubernetes/), with a `kustomization.yaml` so they can be
+pointed at directly by Argo CD or `kubectl apply -k`.
 
 ## Tools
 
@@ -147,20 +293,126 @@ Subtitle management, including two instances if you run one per Sonarr/Radarr pa
 
 Services with no configured instances register no tools at all, so the advertised list always reflects what is actually reachable.
 
+## Troubleshooting
+
+Start with `--check`. It exercises exactly the credentials and URLs the tools will use, and
+prints one line per instance, so it separates "my configuration is wrong" from "my client
+is wrong" in a single command:
+
+```bash
+docker run --rm --env-file .env ghcr.io/gauranshmathur/arr-mcp --check
+# or, from a local binary
+arr-mcp --config config.yaml --check
+```
+
+### `401 Unauthorized`
+
+```
+FAIL  radarr/main (http://192.168.10.14:7878): radarr returned 401: Unauthorized
+```
+
+The URL is right — something answered — but the API key is not. Re-copy it from
+[Settings → General → Security](#find-your-api-key); a trailing space or a truncated paste
+is the usual cause. Check you did not swap keys between two instances of the same service,
+which produces exactly this error on both.
+
+### `connection refused` or a timeout
+
+Nothing is listening at that address. In order of likelihood:
+
+1. **Wrong port.** Sonarr 8989, Radarr 7878, Prowlarr 9696, Bazarr 6767 by default.
+2. **`localhost` used from inside a container.** This is by far the most common mistake.
+   Inside a container, `localhost` means *that container*, not your machine — so
+   `SONARR_URL=http://localhost:8989` tells ARR-MCP to look for Sonarr inside its own
+   otherwise-empty container, and it finds nothing. Use the LAN IP of the host
+   (`http://192.168.10.12:8989`), or the other container's service name if they share a
+   Docker network (`http://sonarr:8989`), or `http://host.docker.internal:8989` on Docker
+   Desktop. The same reasoning applies in Kubernetes: use the Service DNS name
+   (`http://sonarr.media.svc.cluster.local:8989`), never `localhost`.
+3. **A URL base path was dropped.** If you reach Sonarr at `/sonarr` behind a reverse
+   proxy, that prefix belongs in the URL: `http://192.168.10.12/sonarr`.
+4. **`https://` with a self-signed certificate.** The certificate must be trusted;
+   plain `http://` on the LAN avoids the problem entirely.
+
+### The client connects but shows no tools
+
+Tools are registered per service, and a service with no configured instances registers
+nothing. An empty tool list therefore means nothing was configured, not that registration
+failed.
+
+- Check the startup log on **stderr** — it prints one `sonarr: 1 instance(s) configured
+  [[default]]` line per service. No lines means no services were configured.
+- With environment variables, remember that **both** `<SERVICE>_URL` and
+  `<SERVICE>_API_KEY` must be set for that service to count.
+- Check the client is passing the environment through. A `claude_desktop_config.json`
+  entry with no `env` block and no `--env-file` starts the server with an empty
+  environment; your shell's exported variables are not inherited.
+- If only the *write* tools are missing, that is `permissions.mode: readonly` doing its
+  job — read-only mode does not register them at all.
+
+### Writes are refused without ever prompting
+
+```
+client does not support elicitation: cannot confirm write tool sonarr_add_series;
+set permissions.fallback=allow or permissions.mode=full to permit it
+```
+
+The default `confirm` mode asks for approval through MCP elicitation, and your client does
+not implement it. There is no prompt to answer, so the call fails closed rather than
+running unapproved — see [Permissions](#permissions) for why that default is the safe one.
+Either switch to a client that supports elicitation, or make the decision explicit:
+
+```yaml
+permissions:
+  mode: confirm
+  confirmScope: destructive   # only deletes need confirming
+  fallback: allow             # writes proceed unprompted
+```
+
+`confirmScope: destructive` is usually the better trade: adds and command triggers run
+freely, and the calls that remove things still fail closed.
+
+### The server starts, then exits immediately under stdio
+
+That is normal. A stdio server lives for exactly as long as its client holds the pipe
+open; running it by hand in a terminal ends as soon as stdin closes. Test it with
+`--check`, or with the MCP inspector (see [Development](#development)), not by launching
+it bare.
+
+### Startup fails with `references unset environment variable(s)`
+
+A `${VAR}` in `config.yaml` has no value in the process environment. Under Docker this
+almost always means the variable is in your shell but was never passed into the container
+— add it to `--env-file` / the compose `env_file`. Empty counts as unset, on purpose.
+
+### Nothing at all appears in the logs
+
+Logging always goes to **stderr**. Under the stdio transport, stdout carries the JSON-RPC
+stream and must not be written to by anything else. Most clients file that stderr away
+under their own logs — Claude Desktop, for example, writes
+`~/Library/Logs/Claude/mcp-server-arr.log` on macOS. Raise the detail with
+`--log-level debug`.
+
 ## Scope
+
+ARR-MCP covers the \*arr-named applications that share the common \*arr API contract: the
+same versioned `/api` shape, the same API-key header, the same `/system/status` and health
+endpoints. That shared contract is the whole reason the project is cheap to extend — a
+service is described by a `ServiceSpec` rather than a bespoke client, so it inherits the
+transport, the instance registry and the permission model for free. Applications outside
+that contract each cost a complete client instead, which is where the line is drawn.
 
 ### Planned
 
-Maintainerr, Cleanuparr and Notifiarr. Each is described by a `ServiceSpec`
-rather than a bespoke client, so they share the transport, the instance
-registry and the permission model.
+Maintainerr, Cleanuparr and Notifiarr.
 
-### Not planned: media servers and request managers
+### Not planned: media servers and request managers (Jellyfin, Overseerr, Plex)
 
-Scope is limited to the **\*arr-named** applications, which share a common API
-contract — that shared shape is what makes each one a `ServiceSpec` entry
-rather than a new client. Jellyfin, Jellyseerr, Overseerr and Plex are out of
-scope, as are the download clients below.
+None of them are \*arr-named, and none of them speak the \*arr API contract — Plex uses
+its own token scheme and XML-flavoured API, and the request managers wrap their own
+approval workflows around a different data model. Supporting any of them means a bespoke
+client with its own auth handling, response shapes and tests, for a capability that
+overlaps heavily with what the \*arr tools already expose.
 
 ### Not planned: download clients (NZBGet, SABnzbd, qBittorrent)
 
@@ -194,16 +446,9 @@ dedicated MCP server.
 --version            print version
 ```
 
-`--check` is the fastest way to validate credentials:
-
-```
-$ arr-mcp --config config.yaml --check
-OK    sonarr/main (http://192.168.10.12:8989)
-OK    sonarr/anime (http://192.168.10.13:8989)
-FAIL  radarr/main (http://192.168.10.14:7878): radarr returned 401: Unauthorized
-```
-
-> Logging always goes to **stderr**. Under the stdio transport, stdout carries the JSON-RPC stream and must not be written to by anything else.
+Flags override the config file, and every flag except `--config` has a config-file
+equivalent under `server:`. `--check` exits non-zero if any instance fails, so it works in
+a healthcheck or a CI step as well as by hand.
 
 ## Development
 
