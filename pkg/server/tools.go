@@ -346,8 +346,9 @@ type EpisodeSubtitlesList struct {
 	Count    int                    `json:"count"`
 }
 
-// ProviderList wraps subtitle provider status.
-type ProviderList struct {
+// SubtitleProviderList wraps Bazarr subtitle provider status. Distinct from
+// ProviderList, which covers the *arr indexer/download-client provider shape.
+type SubtitleProviderList struct {
 	Providers []arr.SubtitleProvider `json:"providers"`
 }
 

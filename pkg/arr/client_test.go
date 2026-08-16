@@ -15,7 +15,6 @@ type capture struct {
 	method string
 	header http.Header
 	query  string
-	method string
 	body   string
 	// paths accumulates every request, for calls that fan out over ids.
 	paths []string

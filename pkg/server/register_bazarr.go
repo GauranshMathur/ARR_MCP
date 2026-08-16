@@ -80,9 +80,9 @@ func registerBazarr(s *Server) {
 		description: "List the enabled subtitle providers with their throttle status. " +
 			"Status is Good when a provider is working; anything else names the failure.",
 		access: AccessRead,
-	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (ProviderList, error) {
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (SubtitleProviderList, error) {
 		providers, err := arr.BazarrProviders(ctx, c)
-		return ProviderList{Providers: providers}, err
+		return SubtitleProviderList{Providers: providers}, err
 	})
 
 	register(s, svc, spec, toolMeta{
