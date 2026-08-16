@@ -10,6 +10,11 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 
 **Jump to:** [60-second quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
 
+> **Prefer your AI assistant to do the setup?** Paste
+> [docs/ai-install-prompt.md](docs/ai-install-prompt.md) into Claude, ChatGPT or similar.
+> It asks about your services, instances and client, then hands back working configuration
+> and the command to verify it.
+
 ## 60-second quickstart
 
 The shortest path from nothing to a working server. No config file, no clone — just

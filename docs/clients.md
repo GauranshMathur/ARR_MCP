@@ -1,5 +1,8 @@
 # Client setup
 
+> Want an assistant to walk you through this instead? Paste
+> [ai-install-prompt.md](ai-install-prompt.md) into Claude, ChatGPT or similar.
+
 Configuration for connecting ARR-MCP to specific MCP clients. If yours is not listed,
 read [Any MCP client](#any-mcp-client) — it describes the two forms every entry here is a
 dialect of.
