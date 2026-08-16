@@ -177,3 +177,38 @@ func parseBasic(h string) (string, string, bool) {
 	r.Header.Set("Authorization", h)
 	return r.BasicAuth()
 }
+
+// Redaction is a substring replace, so a very short credential would rewrite
+// unrelated words -- a one-character key turned "context deadline exceeded"
+// into "conte***t deadline e***ceeded". Real keys are long; short ones are not
+// worth corrupting error messages for.
+func TestRedactIgnoresImplausiblyShortSecrets(t *testing.T) {
+	c := NewClient("http://x", SonarrSpec, Credentials{APIKey: "x"})
+
+	got := c.redact("context deadline exceeded")
+	if got != "context deadline exceeded" {
+		t.Errorf("redact mangled the message: %q", got)
+	}
+}
+
+func TestRedactStillHidesRealLengthSecrets(t *testing.T) {
+	key := "0123456789abcdef0123456789abcdef"
+	c := NewClient("http://x", SonarrSpec, Credentials{APIKey: key})
+
+	got := c.redact("request to /api?apikey=" + key + " failed")
+	if strings.Contains(got, key) {
+		t.Errorf("redact leaked the API key: %q", got)
+	}
+	if !strings.Contains(got, "***") {
+		t.Errorf("redact did not mark the removal: %q", got)
+	}
+}
+
+func TestRedactHidesPasswords(t *testing.T) {
+	c := NewClient("http://x", ServiceSpec{Name: "nzb", BasePath: "/api", Auth: AuthBasic},
+		Credentials{Username: "u", Password: "correct-horse-battery"})
+
+	if got := c.redact("auth failed for correct-horse-battery"); strings.Contains(got, "correct-horse-battery") {
+		t.Errorf("redact leaked the password: %q", got)
+	}
+}
