@@ -486,7 +486,7 @@ a healthcheck or a CI step as well as by hand.
 
 ```bash
 go test ./... -race -cover
-go build -o arr-mcp ./cmd/server
+go build -o arr-mcp ./cmd/arr-mcp
 ```
 
 Inspect the tool surface interactively:

@@ -37,7 +37,7 @@ Record anything surprising in the commit body. Real examples already found: Prow
 Adding a service should mean *describing* it, not writing a new client.
 
 1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`.
-2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/server/main.go`.
+2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`.
 3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`.
 4. Add `pkg/server/register_<service>.go` and call it from `registerAll`.
 5. Add the service to `README.md`, `config.example.yaml` and `.env.example`.

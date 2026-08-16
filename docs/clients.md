@@ -23,12 +23,11 @@ file, at the cost of building or installing it first:
 ```bash
 git clone https://github.com/GauranshMathur/ARR_MCP.git
 cd ARR_MCP
-go build -o arr-mcp ./cmd/server
+go build -o arr-mcp ./cmd/arr-mcp
 ```
 
-`go install github.com/GauranshMathur/ARR_MCP/cmd/server@latest` also works, but Go names
-the binary after its directory, so it lands as `$(go env GOPATH)/bin/server` — rename it or
-use that path.
+`go install github.com/GauranshMathur/ARR_MCP/cmd/arr-mcp@latest` also works, and installs
+it as `$(go env GOPATH)/bin/arr-mcp`.
 
 **stdio or HTTP?** stdio means the client starts and owns the process; it is the default
 for desktop and editor clients, and needs no port. HTTP means ARR-MCP runs somewhere as a
