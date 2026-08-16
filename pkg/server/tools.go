@@ -253,7 +253,7 @@ type LanguagesArgs struct {
 	All bool `json:"all,omitempty" jsonschema:"return every ISO language instead of only the enabled ones"`
 }
 
-// EpisodeSubtitleArgs identifies one episode subtitle in one language.
+// EpisodeSubtitleArgs identifies one episode subtitle language to search for.
 type EpisodeSubtitleArgs struct {
 	InstanceArg
 	SeriesID  int    `json:"seriesId" jsonschema:"sonarrSeriesId from bazarr_wanted_episodes"`
@@ -261,17 +261,43 @@ type EpisodeSubtitleArgs struct {
 	Language  string `json:"language" jsonschema:"two-letter language code, e.g. en"`
 	Forced    bool   `json:"forced,omitempty"`
 	HI        bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
-	Path      string `json:"path,omitempty" jsonschema:"subtitle file path; required only when deleting"`
 }
 
-// MovieSubtitleArgs identifies one movie subtitle in one language.
+// MovieSubtitleArgs identifies one movie subtitle language to search for.
 type MovieSubtitleArgs struct {
 	InstanceArg
 	RadarrID int    `json:"radarrId" jsonschema:"radarrId from bazarr_wanted_movies"`
 	Language string `json:"language" jsonschema:"two-letter language code, e.g. en"`
 	Forced   bool   `json:"forced,omitempty"`
 	HI       bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
-	Path     string `json:"path,omitempty" jsonschema:"subtitle file path; required only when deleting"`
+}
+
+// DeleteEpisodeSubtitleArgs identifies an existing subtitle file to remove.
+// Path is required and comes from bazarr_list_episode_subtitles.
+type DeleteEpisodeSubtitleArgs struct {
+	InstanceArg
+	SeriesID  int    `json:"seriesId" jsonschema:"sonarrSeriesId of the episode"`
+	EpisodeID int    `json:"episodeId" jsonschema:"sonarrEpisodeId of the episode"`
+	Language  string `json:"language" jsonschema:"two-letter language code of the subtitle to delete"`
+	Path      string `json:"path" jsonschema:"subtitle file path from bazarr_list_episode_subtitles"`
+	Forced    bool   `json:"forced,omitempty"`
+	HI        bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// DeleteMovieSubtitleArgs identifies an existing movie subtitle file to remove.
+type DeleteMovieSubtitleArgs struct {
+	InstanceArg
+	RadarrID int    `json:"radarrId" jsonschema:"radarrId of the movie"`
+	Language string `json:"language" jsonschema:"two-letter language code of the subtitle to delete"`
+	Path     string `json:"path" jsonschema:"subtitle file path of the subtitle to delete"`
+	Forced   bool   `json:"forced,omitempty"`
+	HI       bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
+}
+
+// SeriesSubtitlesArgs selects a series whose per-episode subtitles to list.
+type SeriesSubtitlesArgs struct {
+	InstanceArg
+	SeriesID int `json:"seriesId" jsonschema:"sonarrSeriesId from bazarr_list_series"`
 }
 
 // --- bazarr tool outputs ---
@@ -290,16 +316,30 @@ type WantedMovieList struct {
 	Total    int               `json:"total"`
 }
 
-// BazarrSeriesList wraps Bazarr's series view.
+// BazarrSeriesList wraps a page of Bazarr's series view.
 type BazarrSeriesList struct {
-	Series []arr.BazarrSeries `json:"series"`
-	Count  int                `json:"count"`
+	Series   []arr.BazarrSeries `json:"series"`
+	Returned int                `json:"returned"`
+	Total    int                `json:"total" jsonschema:"total series in the library, which may exceed those returned"`
 }
 
-// BazarrMovieList wraps Bazarr's movie view.
+// BazarrMovieList wraps a page of Bazarr's movie view.
 type BazarrMovieList struct {
-	Movies []arr.BazarrMovie `json:"movies"`
-	Count  int               `json:"count"`
+	Movies   []arr.BazarrMovie `json:"movies"`
+	Returned int               `json:"returned"`
+	Total    int               `json:"total" jsonschema:"total movies in the library, which may exceed those returned"`
+}
+
+// BazarrHealthList wraps Bazarr health issues, which use their own shape.
+type BazarrHealthList struct {
+	Issues []arr.BazarrHealthIssue `json:"issues"`
+	Count  int                     `json:"count"`
+}
+
+// EpisodeSubtitlesList wraps per-episode subtitle state.
+type EpisodeSubtitlesList struct {
+	Episodes []arr.EpisodeSubtitles `json:"episodes"`
+	Count    int                    `json:"count"`
 }
 
 // ProviderList wraps subtitle provider status.

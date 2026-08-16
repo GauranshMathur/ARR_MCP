@@ -367,3 +367,43 @@ func TestBazarrInstanceEnumCoversBothInstances(t *testing.T) {
 	}
 	t.Fatal("bazarr_badges not advertised")
 }
+
+// Deleting a subtitle without a path would ask Bazarr to remove "" and then
+// report success, so the schema must make the path mandatory.
+func TestBazarrDeleteToolRequiresSubtitlePath(t *testing.T) {
+	srv, hits := fakeArr(t, `{"data":[]}`)
+	cs := connect(t, cfgWith(map[string][]config.Instance{
+		"bazarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, permsFull))
+
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	var schema string
+	for _, tool := range res.Tools {
+		if tool.Name == "bazarr_delete_episode_subtitle" {
+			raw, _ := json.Marshal(tool.InputSchema)
+			schema = string(raw)
+		}
+	}
+	if schema == "" {
+		t.Fatal("bazarr_delete_episode_subtitle not advertised")
+	}
+	if !strings.Contains(schema, `"required"`) || !strings.Contains(schema, `"path"`) {
+		t.Fatalf("schema does not mention a required path: %s", schema)
+	}
+
+	// Omitting the path must be rejected before any request is made.
+	callRes, callErr := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "bazarr_delete_episode_subtitle",
+		Arguments: map[string]any{"seriesId": 1, "episodeId": 2, "language": "en"},
+	})
+	rejected := callErr != nil || (callRes != nil && callRes.IsError)
+	if !rejected {
+		t.Error("expected deletion without a path to be rejected")
+	}
+	if *hits != 0 {
+		t.Errorf("upstream contacted %d times for a pathless delete", *hits)
+	}
+}

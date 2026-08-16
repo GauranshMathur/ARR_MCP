@@ -6,16 +6,18 @@ import (
 	"testing"
 )
 
-func TestBazarrSpecUsesUppercaseAPIKeyHeader(t *testing.T) {
+// Go canonicalises header keys, so a ServiceSpec cannot control their case.
+// Bazarr was verified to accept X-Api-Key, X-API-KEY and x-api-key alike, so
+// the canonical form is correct and no override is needed.
+func TestBazarrSendsCanonicalAPIKeyHeader(t *testing.T) {
 	srv, got := fakeService(t, 200, `{"data":{}}`)
 	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "bk"})
 
 	if _, err := c.Get(context.Background(), "/system/status"); err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
-	// Bazarr wants X-API-KEY, not the X-Api-Key the *arr apps use.
-	if v := got.header.Get("X-API-KEY"); v != "bk" {
-		t.Errorf("X-API-KEY = %q, want %q", v, "bk")
+	if v := got.header.Get("X-Api-Key"); v != "bk" {
+		t.Errorf("X-Api-Key = %q, want %q", v, "bk")
 	}
 	if got.path != "/api/system/status" {
 		t.Errorf("path = %q, want /api/system/status", got.path)
@@ -31,7 +33,7 @@ func TestBazarrListSeriesUnwrapsDataEnvelope(t *testing.T) {
 	],"total":1}`)
 	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
 
-	series, err := BazarrListSeries(context.Background(), c, 0, 50)
+	series, _, err := BazarrListSeries(context.Background(), c, 0, 50)
 	if err != nil {
 		t.Fatalf("BazarrListSeries returned error: %v", err)
 	}
@@ -50,7 +52,7 @@ func TestBazarrListSeriesPassesPaging(t *testing.T) {
 	srv, got := fakeService(t, 200, `{"data":[]}`)
 	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
 
-	if _, err := BazarrListSeries(context.Background(), c, 20, 10); err != nil {
+	if _, _, err := BazarrListSeries(context.Background(), c, 20, 10); err != nil {
 		t.Fatalf("BazarrListSeries returned error: %v", err)
 	}
 	for _, want := range []string{"start=20", "length=10"} {
@@ -199,5 +201,176 @@ func TestBazarrSearchMovieSubtitlesPatchesWithQueryParams(t *testing.T) {
 		if !contains(got.query, want) {
 			t.Errorf("query = %q, want %q", got.query, want)
 		}
+	}
+}
+
+// Bazarr's health entries are {object, issue}, not the {source, type, message}
+// the *arr apps use. Decoding into the *arr shape yields blank messages.
+func TestBazarrHealthDecodesObjectAndIssue(t *testing.T) {
+	srv, got := fakeService(t, 200,
+		`{"data":[{"object":"/NAS/Shows","issue":"Path does not exist"}]}`)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	issues, err := BazarrHealth(context.Background(), c)
+	if err != nil {
+		t.Fatalf("BazarrHealth returned error: %v", err)
+	}
+	if got.path != "/api/system/health" {
+		t.Errorf("path = %q, want /api/system/health", got.path)
+	}
+	if len(issues) != 1 {
+		t.Fatalf("issues = %d, want 1", len(issues))
+	}
+	if issues[0].Object != "/NAS/Shows" || issues[0].Issue != "Path does not exist" {
+		t.Errorf("issue = %+v, want the object and issue populated", issues[0])
+	}
+}
+
+// A page of results is meaningless without the library total: the model cannot
+// otherwise tell "50 series exist" from "50 of 500".
+func TestBazarrListSeriesReportsLibraryTotal(t *testing.T) {
+	srv, _ := fakeService(t, 200, `{"data":[{"sonarrSeriesId":1,"title":"A"}],"total":500}`)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	series, total, err := BazarrListSeries(context.Background(), c, 0, 50)
+	if err != nil {
+		t.Fatalf("BazarrListSeries returned error: %v", err)
+	}
+	if total != 500 {
+		t.Errorf("total = %d, want 500", total)
+	}
+	if len(series) != 1 {
+		t.Errorf("series = %d, want 1", len(series))
+	}
+}
+
+func TestBazarrListMoviesReportsLibraryTotal(t *testing.T) {
+	srv, got := fakeService(t, 200, `{"data":[{"radarrId":7,"title":"B"}],"total":42}`)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	movies, total, err := BazarrListMovies(context.Background(), c, 0, 50)
+	if err != nil {
+		t.Fatalf("BazarrListMovies returned error: %v", err)
+	}
+	if got.path != "/api/movies" {
+		t.Errorf("path = %q, want /api/movies", got.path)
+	}
+	if total != 42 || len(movies) != 1 || movies[0].RadarrID != 7 {
+		t.Errorf("movies = %+v total = %d, want radarrId 7 total 42", movies, total)
+	}
+}
+
+// Subtitle deletion needs a file path, and this is the only tool that can
+// produce one. Embedded tracks have a null path and cannot be deleted.
+func TestBazarrListEpisodeSubtitlesReturnsPaths(t *testing.T) {
+	srv, got := fakeService(t, 200, `{"data":[
+	  {"sonarrSeriesId":99,"sonarrEpisodeId":7946,"title":"Into the Cold","season":14,"episode":9,
+	   "subtitles":[
+	     {"name":"English","code2":"en","path":"/NAS/Shows/x.en.srt","forced":false,"hi":false},
+	     {"name":"English","code2":"en","path":null,"forced":false,"hi":true,"embedded_track_id":3}],
+	   "missing_subtitles":[{"name":"Spanish","code2":"es"}]}
+	]}`)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	eps, err := BazarrListEpisodeSubtitles(context.Background(), c, 99)
+	if err != nil {
+		t.Fatalf("BazarrListEpisodeSubtitles returned error: %v", err)
+	}
+	if got.path != "/api/episodes" {
+		t.Errorf("path = %q, want /api/episodes", got.path)
+	}
+	if !contains(got.query, "seriesid") {
+		t.Errorf("query = %q, want a seriesid parameter", got.query)
+	}
+	if len(eps) != 1 {
+		t.Fatalf("episodes = %d, want 1", len(eps))
+	}
+	if len(eps[0].Subtitles) != 2 {
+		t.Fatalf("subtitles = %d, want 2", len(eps[0].Subtitles))
+	}
+	if eps[0].Subtitles[0].Path != "/NAS/Shows/x.en.srt" {
+		t.Errorf("first subtitle path = %q, want the external file path", eps[0].Subtitles[0].Path)
+	}
+	if eps[0].Subtitles[1].Path != "" {
+		t.Errorf("embedded track path = %q, want empty", eps[0].Subtitles[1].Path)
+	}
+}
+
+func TestBazarrDeleteEpisodeSubtitleSendsPathAndMethod(t *testing.T) {
+	srv, got := fakeService(t, 204, ``)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	err := BazarrDeleteEpisodeSubtitle(context.Background(), c, 99, 7889, "en", "/sub/a.srt", false, false)
+	if err != nil {
+		t.Fatalf("BazarrDeleteEpisodeSubtitle returned error: %v", err)
+	}
+	if got.method != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", got.method)
+	}
+	if got.path != "/api/episodes/subtitles" {
+		t.Errorf("path = %q, want /api/episodes/subtitles", got.path)
+	}
+	for _, want := range []string{"seriesid=99", "episodeid=7889", "language=en", "path=%2Fsub%2Fa.srt"} {
+		if !contains(got.query, want) {
+			t.Errorf("query = %q, want %q", got.query, want)
+		}
+	}
+}
+
+// Deleting with an empty path would ask Bazarr to remove "" and then report
+// success, so the client refuses before making the request.
+func TestBazarrDeleteEpisodeSubtitleRejectsEmptyPath(t *testing.T) {
+	srv, got := fakeService(t, 204, ``)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	err := BazarrDeleteEpisodeSubtitle(context.Background(), c, 99, 7889, "en", "", false, false)
+	if err == nil {
+		t.Fatal("expected an error when the subtitle path is empty, got nil")
+	}
+	if got.path != "" {
+		t.Errorf("a request was sent despite the empty path: %q", got.path)
+	}
+}
+
+func TestBazarrDeleteMovieSubtitleRejectsEmptyPath(t *testing.T) {
+	srv, got := fakeService(t, 204, ``)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	if err := BazarrDeleteMovieSubtitle(context.Background(), c, 192, "en", "", false, false); err == nil {
+		t.Fatal("expected an error when the subtitle path is empty, got nil")
+	}
+	if got.path != "" {
+		t.Errorf("a request was sent despite the empty path: %q", got.path)
+	}
+}
+
+func TestBazarrDeleteMovieSubtitleSendsPathAndMethod(t *testing.T) {
+	srv, got := fakeService(t, 204, ``)
+	c := NewClient(srv.URL, BazarrSpec, Credentials{APIKey: "k"})
+
+	if err := BazarrDeleteMovieSubtitle(context.Background(), c, 192, "en", "/sub/b.srt", false, true); err != nil {
+		t.Fatalf("BazarrDeleteMovieSubtitle returned error: %v", err)
+	}
+	if got.method != http.MethodDelete {
+		t.Errorf("method = %q, want DELETE", got.method)
+	}
+	for _, want := range []string{"radarrid=192", "path=%2Fsub%2Fb.srt", "hi=true"} {
+		if !contains(got.query, want) {
+			t.Errorf("query = %q, want %q", got.query, want)
+		}
+	}
+}
+
+// Provider search blocks while Bazarr queries every provider, which routinely
+// exceeds the default read timeout.
+func TestSubtitleSearchUsesLongerTimeoutThanDefault(t *testing.T) {
+	c := NewClient("http://x", BazarrSpec, Credentials{APIKey: "k"})
+	slow := c.WithTimeout(subtitleSearchTimeout)
+
+	if slow.http.Timeout <= c.http.Timeout {
+		t.Errorf("search timeout %v is not longer than the default %v", slow.http.Timeout, c.http.Timeout)
+	}
+	if c.http.Timeout != defaultTimeout {
+		t.Errorf("WithTimeout mutated the original client: %v", c.http.Timeout)
 	}
 }

@@ -126,7 +126,7 @@ All tools also carry MCP `readOnlyHint` / `destructiveHint` annotations, so clie
 
 Same shape with movies: `radarr_list_movies`, `radarr_search_movies`, `radarr_calendar`, `radarr_queue`, `radarr_history`, `radarr_health`, `radarr_disk_space`, `radarr_list_quality_profiles`, `radarr_list_root_folders`, `radarr_system_status` (read); `radarr_add_movie`, `radarr_run_command` (write); `radarr_delete_movie`, `radarr_delete_queue_item` (destructive).
 
-### Bazarr (13)
+### Bazarr (14)
 
 Subtitle management, including two instances if you run one per Sonarr/Radarr pair.
 
@@ -135,6 +135,7 @@ Subtitle management, including two instances if you run one per Sonarr/Radarr pa
 | `bazarr_badges` — outstanding counts, cheapest first call | read |
 | `bazarr_wanted_episodes`, `bazarr_wanted_movies` | read |
 | `bazarr_list_series`, `bazarr_list_movies` | read |
+| `bazarr_list_episode_subtitles` — the only source of subtitle file paths | read |
 | `bazarr_list_providers`, `bazarr_list_languages` | read |
 | `bazarr_health`, `bazarr_system_status` | read |
 | `bazarr_search_episode_subtitles`, `bazarr_search_movie_subtitles` | write |
@@ -222,7 +223,7 @@ Adding a service means describing its API rather than writing a new client — `
 ```go
 var BazarrSpec = ServiceSpec{
     Name: "bazarr", BasePath: "/api", StatusPath: "/system/status",
-    Auth: AuthHeaderKey, AuthHeader: "X-API-KEY",
+    Auth: AuthHeaderKey,
 }
 ```
 
