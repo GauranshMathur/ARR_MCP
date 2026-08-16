@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **50 tools** across Sonarr, Radarr, Prowlarr and Bazarr
+- **105 tools** across Sonarr, Radarr, Prowlarr and Bazarr — near-complete API coverage
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [60-second quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -257,20 +257,39 @@ pointed at directly by Argo CD or `kubectl apply -k`.
 
 ## Tools
 
-### Sonarr (15)
+Sonarr and Radarr are kept at parity: 32 of their tools are the same tool
+registered for both services, and the rest differ only where the APIs genuinely
+do (seasons and episodes versus movies and collections).
 
-| Tool | Access |
-|---|---|
-| `sonarr_list_series`, `sonarr_search_series`, `sonarr_list_episodes` | read |
-| `sonarr_list_quality_profiles`, `sonarr_list_root_folders` | read |
-| `sonarr_calendar`, `sonarr_queue`, `sonarr_history` | read |
-| `sonarr_health`, `sonarr_disk_space`, `sonarr_system_status` | read |
-| `sonarr_add_series`, `sonarr_run_command` | write |
-| `sonarr_delete_series`, `sonarr_delete_queue_item` | destructive |
+### Sonarr (43)
 
-### Radarr (14)
+| Area | Tools | Access |
+|---|---|---|
+| Library | `sonarr_list_series`, `sonarr_search_series`, `sonarr_list_episodes`, `sonarr_calendar` | read |
+| Wanted | `sonarr_wanted_missing`, `sonarr_wanted_cutoff` | read |
+| Files | `sonarr_list_episode_files`, `sonarr_rename_preview` | read |
+| Profiles | `sonarr_list_quality_profiles`, `sonarr_list_quality_definitions`, `sonarr_list_custom_formats`, `sonarr_list_delay_profiles`, `sonarr_list_release_profiles` | read |
+| Config | `sonarr_list_root_folders`, `sonarr_naming_config`, `sonarr_list_indexers`, `sonarr_list_download_clients`, `sonarr_list_import_lists`, `sonarr_list_notifications` | read |
+| Tags | `sonarr_list_tags`, `sonarr_tag_details` | read |
+| Operations | `sonarr_queue`, `sonarr_queue_status`, `sonarr_history`, `sonarr_blocklist`, `sonarr_health`, `sonarr_disk_space`, `sonarr_system_status`, `sonarr_list_tasks`, `sonarr_list_updates` | read |
+| Add & edit | `sonarr_add_series`, `sonarr_edit_series`, `sonarr_set_season_monitored`, `sonarr_monitor_episodes`, `sonarr_create_tag` | write |
+| Automation | `sonarr_trigger_search`, `sonarr_refresh_series`, `sonarr_run_command` | write |
+| Deletion | `sonarr_delete_series`, `sonarr_delete_episode_files`, `sonarr_delete_queue_item`, `sonarr_delete_blocklist_item`, `sonarr_delete_tag` | destructive |
 
-Same shape with movies: `radarr_list_movies`, `radarr_search_movies`, `radarr_calendar`, `radarr_queue`, `radarr_history`, `radarr_health`, `radarr_disk_space`, `radarr_list_quality_profiles`, `radarr_list_root_folders`, `radarr_system_status` (read); `radarr_add_movie`, `radarr_run_command` (write); `radarr_delete_movie`, `radarr_delete_queue_item` (destructive).
+### Radarr (41)
+
+| Area | Tools | Access |
+|---|---|---|
+| Library | `radarr_list_movies`, `radarr_search_movies`, `radarr_list_collections`, `radarr_calendar` | read |
+| Wanted | `radarr_wanted_missing`, `radarr_wanted_cutoff` | read |
+| Files | `radarr_list_movie_files`, `radarr_rename_preview` | read |
+| Profiles | `radarr_list_quality_profiles`, `radarr_list_quality_definitions`, `radarr_list_custom_formats`, `radarr_list_delay_profiles`, `radarr_list_release_profiles` | read |
+| Config | `radarr_list_root_folders`, `radarr_naming_config`, `radarr_list_indexers`, `radarr_list_download_clients`, `radarr_list_import_lists`, `radarr_list_notifications` | read |
+| Tags | `radarr_list_tags`, `radarr_tag_details` | read |
+| Operations | `radarr_queue`, `radarr_queue_status`, `radarr_history`, `radarr_blocklist`, `radarr_health`, `radarr_disk_space`, `radarr_system_status`, `radarr_list_tasks`, `radarr_list_updates` | read |
+| Add & edit | `radarr_add_movie`, `radarr_edit_movies`, `radarr_create_tag` | write |
+| Automation | `radarr_trigger_search`, `radarr_refresh_movies`, `radarr_run_command` | write |
+| Deletion | `radarr_delete_movie`, `radarr_delete_movie_files`, `radarr_delete_queue_item`, `radarr_delete_blocklist_item`, `radarr_delete_tag` | destructive |
 
 ### Bazarr (14)
 
@@ -290,6 +309,19 @@ Subtitle management, including two instances if you run one per Sonarr/Radarr pa
 ### Prowlarr (7)
 
 `prowlarr_search`, `prowlarr_list_indexers`, `prowlarr_indexer_stats`, `prowlarr_health`, `prowlarr_history`, `prowlarr_system_status` (read); `prowlarr_run_command` (write).
+
+### What responses contain
+
+Upstream payloads are far too large to return as they arrive — a single Sonarr
+custom format list is 283 KB, one series' episode files 252 KB, and Radarr's
+collection list 259 KB. Every tool returns a projection: identities, counts and
+the fields that answer a question, never overviews, artwork, alternate titles or
+embedded media info.
+
+Indexer, download client, import list and notification listings never return the
+provider `fields` array. That array holds each provider's own credentials —
+indexer API keys, download client passwords, notification webhook URLs — and
+none of it belongs in a model's context.
 
 Services with no configured instances register no tools at all, so the advertised list always reflects what is actually reachable.
 
