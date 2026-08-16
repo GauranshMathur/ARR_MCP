@@ -32,10 +32,7 @@ type rawSeries struct {
 
 // toSeries projects an upstream payload onto the trimmed view.
 func (r rawSeries) toSeries() Series {
-	return Series{
-		ID: r.ID, Title: r.Title, Year: r.Year,
-		Status: r.Status, Monitored: r.Monitored, TVDBID: r.TVDBID,
-	}
+	return Series(r)
 }
 
 // SonarrListSeries returns every series in the library.

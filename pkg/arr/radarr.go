@@ -25,10 +25,7 @@ type rawMovie struct {
 }
 
 func (r rawMovie) toMovie() Movie {
-	return Movie{
-		ID: r.ID, Title: r.Title, Year: r.Year, Status: r.Status,
-		Monitored: r.Monitored, HasFile: r.HasFile, TMDBID: r.TMDBID,
-	}
+	return Movie(r)
 }
 
 func trimMovies(raw []rawMovie) []Movie {

@@ -156,7 +156,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, q Query)
 	if err != nil {
 		return nil, fmt.Errorf("%s request failed: %s", c.spec.Name, c.redact(err.Error()))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
