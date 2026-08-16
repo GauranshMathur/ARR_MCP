@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **49 tools** across Sonarr, Radarr, Prowlarr and Bazarr
+- **50 tools** across Sonarr, Radarr, Prowlarr and Bazarr
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [60-second quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
