@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -65,7 +66,8 @@ func main() {
 	}
 
 	for _, svc := range cfg.ConfiguredServices() {
-		log.Info("%s: %d instance(s) configured [%v]", svc, len(cfg.Services[svc]), cfg.InstanceNames(svc))
+		log.Info("%s: %d instance(s) configured [%s]", svc, len(cfg.Services[svc]),
+			strings.Join(cfg.InstanceNames(svc), ", "))
 	}
 	log.Info("permissions: mode=%s confirmScope=%s fallback=%s",
 		cfg.Permissions.Mode, cfg.Permissions.ConfirmScope, cfg.Permissions.Fallback)
