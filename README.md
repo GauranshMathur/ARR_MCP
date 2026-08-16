@@ -8,12 +8,26 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **105 tools** across Sonarr, Radarr, Prowlarr and Bazarr — near-complete API coverage
 - **Single static binary**, distroless container, multi-arch image
 
-**Jump to:** [60-second quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
+**Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
 
-> **Prefer your AI assistant to do the setup?** Paste
-> [docs/ai-install-prompt.md](docs/ai-install-prompt.md) into Claude, ChatGPT or similar.
-> It asks about your services, instances and client, then hands back working configuration
-> and the command to verify it.
+## Install with your AI
+
+The fastest way in. Paste this into Claude, ChatGPT, Cursor, or whichever assistant you use:
+
+```text
+Set up the ARR-MCP server for me, following the guide at
+https://raw.githubusercontent.com/GauranshMathur/ARR_MCP/main/docs/ai-install-prompt.md
+```
+
+It asks which \*arr services you run, whether you have more than one of any of them, and
+which MCP client you use. Then it hands back your config files, the client entry at the
+right path for your operating system, and the command to check it worked.
+
+If your assistant can't browse the web, paste the contents of
+[docs/ai-install-prompt.md](docs/ai-install-prompt.md) instead — it is self-contained and
+needs no network access.
+
+Would rather do it by hand? Carry on below.
 
 ## 60-second quickstart
 
