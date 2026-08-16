@@ -1,0 +1,54 @@
+# Non-secret configuration. Only API keys live in the Secret; everything here is
+# safe to commit, which is the point of the ${VAR} references.
+#
+# Service URLs must be resolvable FROM THIS POD. Use in-cluster DNS
+# (http://sonarr.media.svc.cluster.local:8989) when the *arr apps run in the
+# same cluster, or their LAN address when they do not. Never localhost: in a
+# pod that means the pod itself.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arr-mcp
+  namespace: media
+data:
+  config.yaml: |
+    server:
+      transport: http
+      addr: 0.0.0.0:8080
+      logLevel: info
+
+    permissions:
+      # Most MCP clients reaching a shared in-cluster server cannot prompt the
+      # user, and `fallback: deny` then refuses every write. That is the correct
+      # default, but it means a shared deployment is effectively read-only
+      # unless you decide otherwise here.
+      mode: confirm
+      confirmScope: write
+      fallback: deny
+
+    services:
+      sonarr:
+        - name: main
+          url: http://sonarr.media.svc.cluster.local:8989
+          apiKey: ${SONARR_MAIN_API_KEY}
+          default: true
+        - name: anime
+          url: http://sonarr-anime.media.svc.cluster.local:8989
+          apiKey: ${SONARR_ANIME_API_KEY}
+
+      radarr:
+        - name: main
+          url: http://radarr.media.svc.cluster.local:7878
+          apiKey: ${RADARR_MAIN_API_KEY}
+          default: true
+
+      prowlarr:
+        - name: main
+          url: http://prowlarr.media.svc.cluster.local:9696
+          apiKey: ${PROWLARR_API_KEY}
+
+      bazarr:
+        - name: tv
+          url: http://bazarr.media.svc.cluster.local:6767
+          apiKey: ${BAZARR_TV_API_KEY}
+          default: true

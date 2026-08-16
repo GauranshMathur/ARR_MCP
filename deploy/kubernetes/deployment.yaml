@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arr-mcp
+  namespace: media
+  labels:
+    app.kubernetes.io/name: arr-mcp
+spec:
+  # config.yaml is read once at startup, so a ConfigMap edit does not reach a
+  # running pod. After changing it, run:
+  #   kubectl -n media rollout restart deployment/arr-mcp
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: arr-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: arr-mcp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: arr-mcp
+          image: ghcr.io/gauranshmathur/arr-mcp:latest
+          args:
+            - --config
+            - /etc/arr-mcp/config.yaml
+          env:
+            # Also set as an env var so a bare `arr-mcp --check` inside the pod
+            # finds the config, which is what the probes below rely on.
+            - name: ARR_MCP_CONFIG
+              value: /etc/arr-mcp/config.yaml
+          envFrom:
+            # Supplies the ${VAR} values referenced by config.yaml.
+            - secretRef:
+                name: arr-mcp
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: config
+              mountPath: /etc/arr-mcp
+              readOnly: true
+          readinessProbe:
+            # /health only proves the process is up. Readiness uses --check so a
+            # pod that cannot reach its *arr instances never takes traffic.
+            exec:
+              command: ["/usr/local/bin/arr-mcp", "--check"]
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 10
+          livenessProbe:
+            # Liveness deliberately uses the cheap endpoint instead: an *arr app
+            # being down is not a reason to restart this pod.
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: arr-mcp

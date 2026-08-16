@@ -1,0 +1,30 @@
+# ClusterIP by default: reachable from in-cluster clients at
+# http://arr-mcp.media.svc.cluster.local:8080/mcp.
+#
+# For a LoadBalancer address on the LAN instead, switch the type and pin the IP
+# to one from your pool:
+#
+#   spec:
+#     type: LoadBalancer
+#     loadBalancerIP: 192.168.10.50
+#
+# Note that /mcp has no authentication of its own. Anything that can reach this
+# Service can drive every configured *arr instance, subject only to the
+# permission mode — so a LoadBalancer puts that on your whole LAN. Prefer
+# ClusterIP plus an authenticated Traefik IngressRoute (see ingressroute.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: arr-mcp
+  namespace: media
+  labels:
+    app.kubernetes.io/name: arr-mcp
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: arr-mcp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

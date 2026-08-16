@@ -1,0 +1,37 @@
+# Optional Traefik IngressRoute. Not referenced by kustomization.yaml — add it
+# there once the host and middleware match your cluster.
+#
+# ARR-MCP has no authentication of its own, so exposing it through an Ingress
+# without a middleware in front hands full control of your *arr stack to anyone
+# who can resolve the name. The basic-auth middleware below is the minimum;
+# forward-auth against your identity provider is better.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: arr-mcp
+  namespace: media
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`arr-mcp.example.lan`)
+      kind: Rule
+      middlewares:
+        - name: arr-mcp-auth
+      services:
+        - name: arr-mcp
+          port: 8080
+  tls:
+    certResolver: default
+---
+# Create the referenced secret separately, e.g.
+#   htpasswd -nb user 'password' | kubectl create secret generic arr-mcp-users \
+#     --namespace media --from-file=users=/dev/stdin
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: arr-mcp-auth
+  namespace: media
+spec:
+  basicAuth:
+    secret: arr-mcp-users
