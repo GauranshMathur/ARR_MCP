@@ -407,3 +407,241 @@ func TestBazarrDeleteToolRequiresSubtitlePath(t *testing.T) {
 		t.Errorf("upstream contacted %d times for a pathless delete", *hits)
 	}
 }
+
+// recordingArr serves a canned body and records the paths it was asked for.
+func recordingArr(t *testing.T, body string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &paths
+}
+
+// mediaCfg configures one Sonarr and one Radarr instance against srv.
+func mediaCfg(url string) *config.Config {
+	return cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: url, APIKey: "k", Default: true}},
+		"radarr": {{Name: "main", URL: url, APIKey: "k", Default: true}},
+	}, permsFull)
+}
+
+// Tag management must exist for both media services, not just one.
+func TestTagToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_list_tags", "sonarr_tag_details", "sonarr_create_tag", "sonarr_delete_tag",
+		"radarr_list_tags", "radarr_tag_details", "radarr_create_tag", "radarr_delete_tag",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+func TestCreateTagToolPostsToTheTagEndpoint(t *testing.T) {
+	srv, paths := recordingArr(t, `{"id":4,"label":"kids"}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "radarr_create_tag",
+		Arguments: map[string]any{"label": "kids"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "POST /api/v3/tag" {
+		t.Errorf("upstream calls = %v, want one POST /api/v3/tag", *paths)
+	}
+}
+
+// Deleting a tag detaches it from every series that carried it, so it must be
+// gated as destructive rather than a plain write.
+func TestDeleteTagIsHiddenInReadOnlyMode(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	cs := connect(t, cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeReadOnly, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}))
+
+	names := toolNames(t, cs)
+	if has(names, "sonarr_delete_tag") {
+		t.Error("readonly mode must not expose sonarr_delete_tag")
+	}
+	if !has(names, "sonarr_list_tags") {
+		t.Error("readonly mode must still expose sonarr_list_tags")
+	}
+}
+
+func TestSettingsToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, suffix := range []string{
+		"_list_custom_formats", "_list_delay_profiles", "_list_release_profiles",
+		"_list_indexers", "_list_download_clients", "_list_import_lists",
+		"_list_notifications", "_naming_config", "_list_quality_definitions",
+	} {
+		for _, svc := range []string{"sonarr", "radarr"} {
+			if !has(names, svc+suffix) {
+				t.Errorf("tool %q not advertised", svc+suffix)
+			}
+		}
+	}
+}
+
+// End to end, an indexer's own API key must never reach the model: the tool
+// result is the last place a projection mistake would show up.
+func TestListIndexersToolDoesNotLeakProviderCredentials(t *testing.T) {
+	srv, _ := fakeArr(t, `[{"id":1,"name":"NZBgeek","implementation":"Newznab","protocol":"usenet",
+	  "enableRss":true,"fields":[{"name":"apiKey","value":"leaked-indexer-key"}]}]`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "sonarr_list_indexers"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	body := contentText(res)
+	if !strings.Contains(body, "NZBgeek") {
+		t.Fatalf("result does not contain the indexer name: %s", body)
+	}
+	if strings.Contains(body, "leaked-indexer-key") {
+		t.Fatalf("indexer credentials reached the client: %s", body)
+	}
+}
+
+func TestMonitoringToolsAreRegistered(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_edit_series", "sonarr_set_season_monitored", "sonarr_monitor_episodes",
+		"radarr_edit_movies",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+func TestEditSeriesToolPutsToTheEditorEndpoint(t *testing.T) {
+	srv, paths := recordingArr(t, `[]`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_edit_series",
+		Arguments: map[string]any{"seriesIds": []any{5}, "monitored": false},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "PUT /api/v3/series/editor" {
+		t.Errorf("upstream calls = %v, want one PUT /api/v3/series/editor", *paths)
+	}
+}
+
+func TestFileToolsAreRegisteredForBothMediaServices(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_list_episode_files", "sonarr_delete_episode_files", "sonarr_rename_preview",
+		"radarr_list_movie_files", "radarr_delete_movie_files", "radarr_rename_preview",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+// Deleting files from disk cannot be undone, so it must be gated as
+// destructive and never advertised to a readonly deployment.
+func TestDeleteFileToolsAreDestructive(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	cs := connect(t, cfgWith(map[string][]config.Instance{
+		"radarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeReadOnly, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}))
+
+	names := toolNames(t, cs)
+	if has(names, "radarr_delete_movie_files") {
+		t.Error("readonly mode must not expose radarr_delete_movie_files")
+	}
+	if !has(names, "radarr_list_movie_files") {
+		t.Error("readonly mode must still expose radarr_list_movie_files")
+	}
+}
+
+func TestWantedBlocklistAndSearchToolsAreRegistered(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_wanted_missing", "sonarr_wanted_cutoff", "sonarr_trigger_search", "sonarr_refresh_series",
+		"radarr_wanted_missing", "radarr_wanted_cutoff", "radarr_trigger_search", "radarr_refresh_movies",
+		"radarr_list_collections",
+		"sonarr_blocklist", "sonarr_delete_blocklist_item", "sonarr_list_tasks",
+		"sonarr_list_updates", "sonarr_queue_status",
+		"radarr_blocklist", "radarr_delete_blocklist_item", "radarr_list_tasks",
+		"radarr_list_updates", "radarr_queue_status",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+// The page is capped, so a caller asking "how much is missing?" needs the
+// library-wide total rather than the size of the page it got back.
+func TestWantedMissingToolReportsTheLibraryTotal(t *testing.T) {
+	srv, paths := recordingArr(t, `{"totalRecords":417,"records":[{"id":1,"title":"Pilot"}]}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_wanted_missing",
+		Arguments: map[string]any{"limit": 1},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "GET /api/v3/wanted/missing" {
+		t.Errorf("upstream calls = %v, want one GET /api/v3/wanted/missing", *paths)
+	}
+	if body := contentText(res); !strings.Contains(body, "417") {
+		t.Errorf("result does not report the library total: %s", body)
+	}
+}
+
+func TestTriggerSearchToolPostsACommand(t *testing.T) {
+	srv, paths := recordingArr(t, `{"id":1,"name":"SeriesSearch","status":"queued"}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_trigger_search",
+		Arguments: map[string]any{"seriesId": 5},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "POST /api/v3/command" {
+		t.Errorf("upstream calls = %v, want one POST /api/v3/command", *paths)
+	}
+}

@@ -133,10 +133,12 @@ type SeriesList struct {
 	Count  int          `json:"count"`
 }
 
-// MovieList wraps movie results.
+// MovieList wraps movie results. Total is set only by the paged tools, where
+// the page is capped and the count alone would understate the library.
 type MovieList struct {
 	Movies []arr.Movie `json:"movies"`
 	Count  int         `json:"count"`
+	Total  int         `json:"total,omitempty" jsonschema:"records available across all pages"`
 }
 
 // ProfileList wraps quality profile results.
@@ -227,10 +229,12 @@ type HistoryList struct {
 	Count   int                 `json:"count"`
 }
 
-// EpisodeList wraps episode results.
+// EpisodeList wraps episode results. Total is set only by the paged tools,
+// where the page is capped and the count alone would understate the library.
 type EpisodeList struct {
 	Episodes []arr.Episode `json:"episodes"`
 	Count    int           `json:"count"`
+	Total    int           `json:"total,omitempty" jsonschema:"records available across all pages"`
 }
 
 // IndexerStatList wraps Prowlarr indexer statistics.
@@ -342,8 +346,9 @@ type EpisodeSubtitlesList struct {
 	Count    int                    `json:"count"`
 }
 
-// ProviderList wraps subtitle provider status.
-type ProviderList struct {
+// SubtitleProviderList wraps Bazarr subtitle provider status. Distinct from
+// ProviderList, which covers the *arr indexer/download-client provider shape.
+type SubtitleProviderList struct {
 	Providers []arr.SubtitleProvider `json:"providers"`
 }
 
@@ -361,4 +366,190 @@ type StatusMap struct {
 type Requested struct {
 	Requested bool   `json:"requested"`
 	Detail    string `json:"detail,omitempty"`
+}
+
+// --- media service tool inputs ---
+
+// LabelArgs is the input for tag creation.
+type LabelArgs struct {
+	InstanceArg
+	Label string `json:"label" jsonschema:"tag label, e.g. kids or 4k"`
+}
+
+// IDArgs is the input for tools that act on a single record by id.
+type IDArgs struct {
+	InstanceArg
+	ID int `json:"id" jsonschema:"internal id of the record"`
+}
+
+// --- media service tool outputs ---
+
+// TagList wraps tag results.
+type TagList struct {
+	Tags  []arr.Tag `json:"tags"`
+	Count int       `json:"count"`
+}
+
+// TagDetailList wraps tag usage results.
+type TagDetailList struct {
+	Tags  []arr.TagDetail `json:"tags"`
+	Count int             `json:"count"`
+}
+
+// CustomFormatList wraps custom format results.
+type CustomFormatList struct {
+	Formats []arr.CustomFormat `json:"formats"`
+	Count   int                `json:"count"`
+}
+
+// DelayProfileList wraps delay profile results.
+type DelayProfileList struct {
+	Profiles []arr.DelayProfile `json:"profiles"`
+	Count    int                `json:"count"`
+}
+
+// ReleaseProfileList wraps release profile results.
+type ReleaseProfileList struct {
+	Profiles []arr.ReleaseProfile `json:"profiles"`
+	Count    int                  `json:"count"`
+}
+
+// ProviderList wraps indexer, download client, import list and notification
+// results, which all share the upstream provider shape.
+type ProviderList struct {
+	Providers []arr.Provider `json:"providers"`
+	Count     int            `json:"count"`
+}
+
+// QualityDefinitionList wraps quality size limit results.
+type QualityDefinitionList struct {
+	Definitions []arr.QualityDefinition `json:"definitions"`
+	Count       int                     `json:"count"`
+}
+
+// EditSeriesArgs is the input for sonarr_edit_series. Optional fields are
+// pointers so an omitted argument stays absent from the upstream request
+// instead of resetting the setting to its zero value.
+type EditSeriesArgs struct {
+	InstanceArg
+	SeriesIDs        []int  `json:"seriesIds" jsonschema:"series ids from sonarr_list_series"`
+	Monitored        *bool  `json:"monitored,omitempty" jsonschema:"monitor or unmonitor the series"`
+	QualityProfileID *int   `json:"qualityProfileId,omitempty" jsonschema:"id from sonarr_list_quality_profiles"`
+	SeasonFolder     *bool  `json:"seasonFolder,omitempty"`
+	RootFolderPath   string `json:"rootFolderPath,omitempty" jsonschema:"path from sonarr_list_root_folders"`
+	SeriesType       string `json:"seriesType,omitempty" jsonschema:"standard, daily or anime"`
+	MonitorNewItems  string `json:"monitorNewItems,omitempty" jsonschema:"all or none"`
+	Tags             []int  `json:"tags,omitempty" jsonschema:"tag ids from sonarr_list_tags"`
+	ApplyTags        string `json:"applyTags,omitempty" jsonschema:"how to apply tags: add, remove or replace; defaults to add"`
+	MoveFiles        bool   `json:"moveFiles,omitempty" jsonschema:"move files on disk when rootFolderPath changes"`
+}
+
+// EditMoviesArgs is the input for radarr_edit_movies.
+type EditMoviesArgs struct {
+	InstanceArg
+	MovieIDs            []int  `json:"movieIds" jsonschema:"movie ids from radarr_list_movies"`
+	Monitored           *bool  `json:"monitored,omitempty" jsonschema:"monitor or unmonitor the movies"`
+	QualityProfileID    *int   `json:"qualityProfileId,omitempty" jsonschema:"id from radarr_list_quality_profiles"`
+	MinimumAvailability string `json:"minimumAvailability,omitempty" jsonschema:"tba, announced, inCinemas or released"`
+	RootFolderPath      string `json:"rootFolderPath,omitempty" jsonschema:"path from radarr_list_root_folders"`
+	Tags                []int  `json:"tags,omitempty" jsonschema:"tag ids from radarr_list_tags"`
+	ApplyTags           string `json:"applyTags,omitempty" jsonschema:"how to apply tags: add, remove or replace; defaults to add"`
+	MoveFiles           bool   `json:"moveFiles,omitempty" jsonschema:"move files on disk when rootFolderPath changes"`
+}
+
+// SeasonMonitorArgs is the input for sonarr_set_season_monitored.
+type SeasonMonitorArgs struct {
+	InstanceArg
+	SeriesID     int  `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber int  `json:"seasonNumber" jsonschema:"season number; 0 is specials"`
+	Monitored    bool `json:"monitored" jsonschema:"true to monitor the season, false to unmonitor it"`
+}
+
+// EpisodeMonitorArgs is the input for sonarr_monitor_episodes.
+type EpisodeMonitorArgs struct {
+	InstanceArg
+	EpisodeIDs []int `json:"episodeIds" jsonschema:"episode ids from sonarr_list_episodes"`
+	Monitored  bool  `json:"monitored" jsonschema:"true to monitor the episodes, false to unmonitor them"`
+}
+
+// Updated reports how many records a bulk edit touched.
+type Updated struct {
+	Updated int `json:"updated"`
+}
+
+// MovieArgs is the input for tools scoped to one movie.
+type MovieArgs struct {
+	InstanceArg
+	MovieID int `json:"movieId" jsonschema:"movie id from radarr_list_movies"`
+}
+
+// FileIDsArgs is the input for file deletion.
+type FileIDsArgs struct {
+	InstanceArg
+	FileIDs []int `json:"fileIds" jsonschema:"file ids from the file listing tool"`
+}
+
+// SeriesRenameArgs is the input for sonarr_rename_preview.
+type SeriesRenameArgs struct {
+	InstanceArg
+	SeriesID     int  `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber *int `json:"seasonNumber,omitempty" jsonschema:"limit the preview to one season; omit for the whole series"`
+}
+
+// MediaFileList wraps episode and movie file results.
+type MediaFileList struct {
+	Files []arr.MediaFile `json:"files"`
+	Count int             `json:"count"`
+}
+
+// RenamePreviewList wraps rename preview results.
+type RenamePreviewList struct {
+	Renames []arr.RenamePreview `json:"renames"`
+	Count   int                 `json:"count"`
+}
+
+// DeletedCount reports how many records a bulk deletion removed. A partial
+// failure reports the count reached before the error, because deleted files do
+// not come back and the caller must not blindly retry the whole list.
+type DeletedCount struct {
+	Deleted int `json:"deleted"`
+}
+
+// SearchScopeArgs is the input for sonarr_trigger_search.
+type SearchScopeArgs struct {
+	InstanceArg
+	SeriesID     int   `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber *int  `json:"seasonNumber,omitempty" jsonschema:"search one season only"`
+	EpisodeIDs   []int `json:"episodeIds,omitempty" jsonschema:"search specific episodes only; overrides seriesId and seasonNumber"`
+}
+
+// MovieIDsArgs is the input for tools acting on several movies.
+type MovieIDsArgs struct {
+	InstanceArg
+	MovieIDs []int `json:"movieIds" jsonschema:"movie ids from radarr_list_movies"`
+}
+
+// BlocklistList wraps blocklist results.
+type BlocklistList struct {
+	Items []arr.BlocklistItem `json:"items"`
+	Count int                 `json:"count"`
+	Total int                 `json:"total" jsonschema:"releases blocklisted across all pages"`
+}
+
+// TaskList wraps scheduled task results.
+type TaskList struct {
+	Tasks []arr.Task `json:"tasks"`
+	Count int        `json:"count"`
+}
+
+// UpdateList wraps release results.
+type UpdateList struct {
+	Updates []arr.UpdatePackage `json:"updates"`
+	Count   int                 `json:"count"`
+}
+
+// CollectionList wraps Radarr collection results.
+type CollectionList struct {
+	Collections []arr.Collection `json:"collections"`
+	Count       int              `json:"count"`
 }
