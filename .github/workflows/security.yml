@@ -1,19 +1,12 @@
 name: Security
 
 on:
+  # Deliberately NOT path-filtered. Trivy runs with the secret scanner, and a
+  # credential pasted into a markdown example is one of the likeliest ways one
+  # reaches this repository -- so documentation is the last path to exempt.
   push:
     branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   pull_request:
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
   schedule:
     # Weekly, so newly disclosed vulnerabilities surface without a code change.
     - cron: "17 4 * * 1"
