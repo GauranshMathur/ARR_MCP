@@ -16,7 +16,7 @@ ARG VERSION=dev
 # a distroless image with no libc.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags "-s -w -X github.com/GauranshMathur/ARR_MCP/pkg/server.Version=${VERSION}" \
-    -o /out/arr-mcp ./cmd/server
+    -o /out/arr-mcp ./cmd/arr-mcp
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/arr-mcp /usr/local/bin/arr-mcp

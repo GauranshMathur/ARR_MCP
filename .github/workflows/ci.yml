@@ -79,7 +79,7 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -trimpath -o /dev/null ./cmd/server
+        run: go build -trimpath -o /dev/null ./cmd/arr-mcp
 
   docker:
     name: Docker build
