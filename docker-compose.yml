@@ -1,23 +1,50 @@
+# Runs ARR-MCP over HTTP, serving MCP at http://localhost:8080/mcp.
+#
+#   cp .env.example .env      # fill in your URLs and API keys
+#   docker compose up -d
+#   curl -s localhost:8080/health
+#
+# For a stdio client, do not use this file. The client starts the container
+# itself:
+#
+#   docker run -i --rm --env-file /absolute/path/to/.env \
+#     ghcr.io/gauranshmathur/arr-mcp --transport stdio
+
 services:
   arr-mcp:
     image: ghcr.io/gauranshmathur/arr-mcp:latest
     container_name: arr-mcp
     restart: unless-stopped
     ports:
+      # There is no authentication in front of /mcp: anyone who can reach this
+      # port can drive every configured *arr instance, subject only to the
+      # permission mode. Keep it on a trusted network, or narrow the binding to
+      # "127.0.0.1:8080:8080" and reach it through a reverse proxy.
       - "8080:8080"
     env_file:
+      # Create this from .env.example first; compose will not start without it.
+      # Note that URLs here are resolved FROM INSIDE THIS CONTAINER, so
+      # localhost means the container itself, not your machine. Use the host's
+      # LAN IP, or a service name if your *arr apps share a network with this
+      # one.
       - .env
-    # Multi-instance setup: mount a config file and point at it.
-    #   volumes:
-    #     - ./config.yaml:/etc/arr-mcp/config.yaml:ro
-    #   command: ["--transport", "http", "--addr", "0.0.0.0:8080",
-    #             "--config", "/etc/arr-mcp/config.yaml"]
+    # environment:
+    #   # Multi-instance setup: point at a mounted config file. Setting this
+    #   # instead of passing --config also lets the bare `arr-mcp --check` in the
+    #   # healthcheck below find the config.
+    #   ARR_MCP_CONFIG: /etc/arr-mcp/config.yaml
+    # volumes:
+    #   - ./config.yaml:/etc/arr-mcp/config.yaml:ro
     #
-    # Single-instance setup: no config file, values come from .env.
+    # The image defaults to exactly this, so the command is spelled out only to
+    # make the deployment explicit and easy to edit.
     command: ["--transport", "http", "--addr", "0.0.0.0:8080"]
     healthcheck:
-      # The distroless image has no shell or curl, so probe from the host side
-      # or use the binary's own connectivity check.
+      # The distroless image has no shell or curl, so probe with the binary's
+      # own connectivity check rather than hitting /health. This reports
+      # unhealthy when a configured *arr instance is unreachable, not only when
+      # the server is down — usually what you want, since an unreachable
+      # instance is otherwise discovered mid-conversation.
       test: ["CMD", "/usr/local/bin/arr-mcp", "--check"]
       interval: 60s
       timeout: 10s
