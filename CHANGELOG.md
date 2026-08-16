@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.4](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.3...v1.0.4) (2026-08-16)
+
+
+### Bug Fixes
+
+* **ci:** keep security scanning on documentation changes ([3d5f553](https://github.com/GauranshMathur/ARR_MCP/commit/3d5f5533d06adf01fb20d919641d77f0bb89cc8f))
+* **ci:** keep security scanning on documentation changes ([c8959b2](https://github.com/GauranshMathur/ARR_MCP/commit/c8959b28aabd523a388273b092fa658943c2170a))
+
+
+### Documentation
+
+* route the install guide by MCP client ([c37bf72](https://github.com/GauranshMathur/ARR_MCP/commit/c37bf72f2a01d5e13f2c37ad524e2a74242af347))
+* route the install guide by MCP client ([01b66a7](https://github.com/GauranshMathur/ARR_MCP/commit/01b66a7256ae968bd6a75a0a031b03bf29afc04e))
+
 ## [1.0.3](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.2...v1.0.3) (2026-08-16)
 
 
