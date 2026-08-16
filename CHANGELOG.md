@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.0...v1.0.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **server:** report the real version for source installs ([7590939](https://github.com/GauranshMathur/ARR_MCP/commit/7590939d0e7c2b9fe353f59faa88566d9ddb2b06))
+* **server:** report the real version for source installs ([021836c](https://github.com/GauranshMathur/ARR_MCP/commit/021836ccdaeaeb4c528b4fd5255f5ceaf804785f))
+
 ## [1.0.0](https://github.com/GauranshMathur/ARR_MCP/compare/v0.3.0...v1.0.0) (2026-08-16)
 
 
