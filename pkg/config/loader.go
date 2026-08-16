@@ -101,7 +101,9 @@ func Load(path string) (*Config, error) {
 			return nil, err
 		}
 	} else {
-		raw, err := os.ReadFile(path)
+		// The path is the operator's own --config flag, not untrusted input;
+		// choosing which local file to load is the purpose of the flag.
+		raw, err := os.ReadFile(path) // #nosec G304
 		if err != nil {
 			return nil, fmt.Errorf("reading config %s: %w", path, err)
 		}

@@ -83,7 +83,10 @@ func (s *Server) RunHTTP(ctx context.Context, addr string) error {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	go func() {
+	// A fresh context is required below, not a child of ctx: this goroutine only
+	// runs because ctx was cancelled, and a cancelled parent would make Shutdown
+	// return immediately instead of draining in-flight requests.
+	go func() { // #nosec G118
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
