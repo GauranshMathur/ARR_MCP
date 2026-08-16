@@ -185,23 +185,33 @@ func TestOmittedInstanceUsesConfiguredDefault(t *testing.T) {
 	}
 }
 
-// The instance enum makes an invalid name unrepresentable: the SDK rejects it
-// during schema validation, before any handler runs, and names the valid set.
+// The instance enum makes an invalid name unrepresentable: it is rejected by
+// schema validation before the handler runs. Which layer reports the rejection
+// has changed across SDK versions, so assert the invariant that matters --
+// the call never reaches the upstream service -- rather than the mechanism.
 func TestUnknownInstanceIsRejectedWithValidNames(t *testing.T) {
 	srv, hits := fakeArr(t, `[]`)
 	cs := connect(t, cfgWith(map[string][]config.Instance{
 		"sonarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
 	}, permsFull))
 
-	_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "sonarr_list_series",
 		Arguments: map[string]any{"instance": "typo"},
 	})
-	if err == nil {
-		t.Fatal("expected an error for an unknown instance name")
+
+	var message string
+	switch {
+	case err != nil:
+		message = err.Error()
+	case res != nil && res.IsError:
+		message = contentText(res)
+	default:
+		t.Fatal("expected an unknown instance name to be rejected, got success")
 	}
-	if !strings.Contains(err.Error(), "main") {
-		t.Errorf("error %q does not tell the model the valid instance names", err)
+
+	if !strings.Contains(message, "main") {
+		t.Errorf("rejection %q does not tell the model the valid instance names", message)
 	}
 	if *hits != 0 {
 		t.Errorf("upstream contacted %d times for an invalid instance", *hits)
