@@ -583,3 +583,65 @@ func TestDeleteFileToolsAreDestructive(t *testing.T) {
 		t.Error("readonly mode must still expose radarr_list_movie_files")
 	}
 }
+
+func TestWantedBlocklistAndSearchToolsAreRegistered(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	names := toolNames(t, connect(t, mediaCfg(srv.URL)))
+
+	for _, want := range []string{
+		"sonarr_wanted_missing", "sonarr_wanted_cutoff", "sonarr_trigger_search", "sonarr_refresh_series",
+		"radarr_wanted_missing", "radarr_wanted_cutoff", "radarr_trigger_search", "radarr_refresh_movies",
+		"radarr_list_collections",
+		"sonarr_blocklist", "sonarr_delete_blocklist_item", "sonarr_list_tasks",
+		"sonarr_list_updates", "sonarr_queue_status",
+		"radarr_blocklist", "radarr_delete_blocklist_item", "radarr_list_tasks",
+		"radarr_list_updates", "radarr_queue_status",
+	} {
+		if !has(names, want) {
+			t.Errorf("tool %q not advertised", want)
+		}
+	}
+}
+
+// The page is capped, so a caller asking "how much is missing?" needs the
+// library-wide total rather than the size of the page it got back.
+func TestWantedMissingToolReportsTheLibraryTotal(t *testing.T) {
+	srv, paths := recordingArr(t, `{"totalRecords":417,"records":[{"id":1,"title":"Pilot"}]}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_wanted_missing",
+		Arguments: map[string]any{"limit": 1},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "GET /api/v3/wanted/missing" {
+		t.Errorf("upstream calls = %v, want one GET /api/v3/wanted/missing", *paths)
+	}
+	if body := contentText(res); !strings.Contains(body, "417") {
+		t.Errorf("result does not report the library total: %s", body)
+	}
+}
+
+func TestTriggerSearchToolPostsACommand(t *testing.T) {
+	srv, paths := recordingArr(t, `{"id":1,"name":"SeriesSearch","status":"queued"}`)
+	cs := connect(t, mediaCfg(srv.URL))
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_trigger_search",
+		Arguments: map[string]any{"seriesId": 5},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("tool returned an error: %s", contentText(res))
+	}
+	if len(*paths) != 1 || (*paths)[0] != "POST /api/v3/command" {
+		t.Errorf("upstream calls = %v, want one POST /api/v3/command", *paths)
+	}
+}

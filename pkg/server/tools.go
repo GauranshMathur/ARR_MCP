@@ -133,10 +133,12 @@ type SeriesList struct {
 	Count  int          `json:"count"`
 }
 
-// MovieList wraps movie results.
+// MovieList wraps movie results. Total is set only by the paged tools, where
+// the page is capped and the count alone would understate the library.
 type MovieList struct {
 	Movies []arr.Movie `json:"movies"`
 	Count  int         `json:"count"`
+	Total  int         `json:"total,omitempty" jsonschema:"records available across all pages"`
 }
 
 // ProfileList wraps quality profile results.
@@ -227,10 +229,12 @@ type HistoryList struct {
 	Count   int                 `json:"count"`
 }
 
-// EpisodeList wraps episode results.
+// EpisodeList wraps episode results. Total is set only by the paged tools,
+// where the page is capped and the count alone would understate the library.
 type EpisodeList struct {
 	Episodes []arr.Episode `json:"episodes"`
 	Count    int           `json:"count"`
+	Total    int           `json:"total,omitempty" jsonschema:"records available across all pages"`
 }
 
 // IndexerStatList wraps Prowlarr indexer statistics.
@@ -508,4 +512,43 @@ type RenamePreviewList struct {
 // not come back and the caller must not blindly retry the whole list.
 type DeletedCount struct {
 	Deleted int `json:"deleted"`
+}
+
+// SearchScopeArgs is the input for sonarr_trigger_search.
+type SearchScopeArgs struct {
+	InstanceArg
+	SeriesID     int   `json:"seriesId" jsonschema:"series id from sonarr_list_series"`
+	SeasonNumber *int  `json:"seasonNumber,omitempty" jsonschema:"search one season only"`
+	EpisodeIDs   []int `json:"episodeIds,omitempty" jsonschema:"search specific episodes only; overrides seriesId and seasonNumber"`
+}
+
+// MovieIDsArgs is the input for tools acting on several movies.
+type MovieIDsArgs struct {
+	InstanceArg
+	MovieIDs []int `json:"movieIds" jsonschema:"movie ids from radarr_list_movies"`
+}
+
+// BlocklistList wraps blocklist results.
+type BlocklistList struct {
+	Items []arr.BlocklistItem `json:"items"`
+	Count int                 `json:"count"`
+	Total int                 `json:"total" jsonschema:"releases blocklisted across all pages"`
+}
+
+// TaskList wraps scheduled task results.
+type TaskList struct {
+	Tasks []arr.Task `json:"tasks"`
+	Count int        `json:"count"`
+}
+
+// UpdateList wraps release results.
+type UpdateList struct {
+	Updates []arr.UpdatePackage `json:"updates"`
+	Count   int                 `json:"count"`
+}
+
+// CollectionList wraps Radarr collection results.
+type CollectionList struct {
+	Collections []arr.Collection `json:"collections"`
+	Count       int              `json:"count"`
 }

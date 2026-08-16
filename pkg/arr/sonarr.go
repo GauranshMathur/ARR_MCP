@@ -216,3 +216,51 @@ func SonarrRenamePreview(ctx context.Context, c *Client, seriesID int, seasonNum
 	}
 	return GetJSON[[]RenamePreview](ctx, c, "/rename", q)
 }
+
+// SonarrWantedMissing returns monitored episodes that have aired but have no
+// file, plus the total number missing across the whole library.
+func SonarrWantedMissing(ctx context.Context, c *Client, pageSize int) ([]Episode, int, error) {
+	return sonarrWanted(ctx, c, "/wanted/missing", pageSize)
+}
+
+// SonarrWantedCutoff returns monitored episodes whose file is below the quality
+// cutoff, plus the total number across the library.
+func SonarrWantedCutoff(ctx context.Context, c *Client, pageSize int) ([]Episode, int, error) {
+	return sonarrWanted(ctx, c, "/wanted/cutoff", pageSize)
+}
+
+// sonarrWanted fetches one of the paged wanted lists. Episode already omits the
+// overview these records carry, so the projection happens by decoding.
+func sonarrWanted(ctx context.Context, c *Client, path string, pageSize int) ([]Episode, int, error) {
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	env, err := GetJSON[paged[Episode]](ctx, c, path, Query{"pageSize": itoa(pageSize)})
+	if err != nil {
+		return nil, 0, err
+	}
+	return env.Records, env.TotalRecords, nil
+}
+
+// SonarrTriggerSearch starts an indexer search for a series, one of its seasons
+// or a specific set of episodes, whichever the arguments describe. The three
+// scopes are three different commands upstream, taking different parameters.
+func SonarrTriggerSearch(ctx context.Context, c *Client, seriesID int, seasonNumber *int, episodeIDs []int) (CommandResult, error) {
+	switch {
+	case len(episodeIDs) > 0:
+		// EpisodeSearch ignores the series entirely; sending one would only be
+		// ambiguous about which scope the service honours.
+		return RunCommand(ctx, c, "EpisodeSearch", map[string]any{"episodeIds": episodeIDs})
+	case seasonNumber != nil:
+		return RunCommand(ctx, c, "SeasonSearch", map[string]any{
+			"seriesId": seriesID, "seasonNumber": *seasonNumber,
+		})
+	default:
+		return RunCommand(ctx, c, "SeriesSearch", map[string]any{"seriesId": seriesID})
+	}
+}
+
+// SonarrRefreshSeries rescans one series' metadata and files.
+func SonarrRefreshSeries(ctx context.Context, c *Client, seriesID int) (CommandResult, error) {
+	return RunCommand(ctx, c, "RefreshSeries", map[string]any{"seriesId": seriesID})
+}

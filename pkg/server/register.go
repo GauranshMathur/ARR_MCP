@@ -168,6 +168,41 @@ func registerSonarr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name:        "sonarr_wanted_missing",
+		description: "List monitored episodes that have aired but have no file, with the library-wide total.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in LimitArgs) (EpisodeList, error) {
+		eps, total, err := arr.SonarrWantedMissing(ctx, c, in.Limit)
+		return EpisodeList{Episodes: eps, Count: len(eps), Total: total}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "sonarr_wanted_cutoff",
+		description: "List monitored episodes whose file is below the quality cutoff and would still be upgraded.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in LimitArgs) (EpisodeList, error) {
+		eps, total, err := arr.SonarrWantedCutoff(ctx, c, in.Limit)
+		return EpisodeList{Episodes: eps, Count: len(eps), Total: total}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "sonarr_trigger_search",
+		description: "Start an indexer search for a series, one of its seasons, or specific episodes. " +
+			"Give episodeIds to search episodes, seasonNumber to search a season, or neither to search the whole series.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in SearchScopeArgs) (arr.CommandResult, error) {
+		return arr.SonarrTriggerSearch(ctx, c, in.SeriesID, in.SeasonNumber, in.EpisodeIDs)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "sonarr_refresh_series",
+		description: "Rescan one series' metadata and files on disk.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in EpisodesArgs) (arr.CommandResult, error) {
+		return arr.SonarrRefreshSeries(ctx, c, in.SeriesID)
+	})
+
+	register(s, svc, spec, toolMeta{
 		name:        "sonarr_calendar",
 		description: "List episodes airing in a date range. Use for questions about what is coming up.",
 		access:      AccessRead,
@@ -310,6 +345,49 @@ func registerRadarr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name:        "radarr_wanted_missing",
+		description: "List monitored movies that have been released but have no file, with the library-wide total.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in LimitArgs) (MovieList, error) {
+		movies, total, err := arr.RadarrWantedMissing(ctx, c, in.Limit)
+		return MovieList{Movies: movies, Count: len(movies), Total: total}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_wanted_cutoff",
+		description: "List monitored movies whose file is below the quality cutoff and would still be upgraded.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in LimitArgs) (MovieList, error) {
+		movies, total, err := arr.RadarrWantedCutoff(ctx, c, in.Limit)
+		return MovieList{Movies: movies, Count: len(movies), Total: total}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_trigger_search",
+		description: "Start an indexer search for specific movies.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in MovieIDsArgs) (arr.CommandResult, error) {
+		return arr.RadarrTriggerSearch(ctx, c, in.MovieIDs)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_refresh_movies",
+		description: "Rescan metadata and files on disk for specific movies.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in MovieIDsArgs) (arr.CommandResult, error) {
+		return arr.RadarrRefreshMovies(ctx, c, in.MovieIDs)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "radarr_list_collections",
+		description: "List the TMDB collections Radarr tracks, with how many movies each holds and how many are missing.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (CollectionList, error) {
+		collections, err := arr.RadarrListCollections(ctx, c)
+		return CollectionList{Collections: collections, Count: len(collections)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name:        "radarr_calendar",
 		description: "List movies releasing in a date range. Use for questions about upcoming releases.",
 		access:      AccessRead,
@@ -446,6 +524,7 @@ type mediaOpts struct {
 func registerMedia(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
 	registerTags(s, svc, spec, opts)
 	registerSettings(s, svc, spec, opts)
+	registerLibraryOps(s, svc, spec, opts)
 }
 
 // registerTags adds tag listing and management.
@@ -571,5 +650,55 @@ func registerSettings(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpt
 	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (QualityDefinitionList, error) {
 		defs, err := arr.ListQualityDefinitions(ctx, c)
 		return QualityDefinitionList{Definitions: defs, Count: len(defs)}, err
+	})
+}
+
+// registerLibraryOps adds the blocklist and system views both media services
+// share. Sonarr and Radarr expose them identically.
+func registerLibraryOps(s *Server, svc string, spec arr.ServiceSpec, opts mediaOpts) {
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_blocklist",
+		description: "List releases " + svc + " has blocklisted and will not grab again, newest first.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in LimitArgs) (BlocklistList, error) {
+		items, total, err := arr.ListBlocklist(ctx, c, in.Limit)
+		return BlocklistList{Items: items, Count: len(items), Total: total}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_delete_blocklist_item",
+		description: "Remove a release from the " + svc + " blocklist so it can be grabbed again.",
+		access:      AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in IDArgs) (Deleted, error) {
+		if err := arr.DeleteBlocklistItem(ctx, c, in.ID); err != nil {
+			return Deleted{ID: in.ID}, err
+		}
+		return Deleted{ID: in.ID, Deleted: true}, nil
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_tasks",
+		description: "List the scheduled background jobs in " + svc + " with when they last and next run.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (TaskList, error) {
+		tasks, err := arr.ListTasks(ctx, c)
+		return TaskList{Tasks: tasks, Count: len(tasks)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_list_updates",
+		description: "List the " + svc + " releases available, and which one is installed.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (UpdateList, error) {
+		updates, err := arr.ListUpdates(ctx, c)
+		return UpdateList{Updates: updates, Count: len(updates)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        svc + "_queue_status",
+		description: "Summarise the " + svc + " download queue: how many items and whether any have errors. Cheaper than listing the queue.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (arr.QueueStatus, error) {
+		return arr.GetQueueStatus(ctx, c)
 	})
 }

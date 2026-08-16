@@ -684,3 +684,117 @@ func deleteFiles(ctx context.Context, c *Client, path string, ids []int, kind st
 	}
 	return len(ids), nil
 }
+
+// --- blocklist, tasks and updates ---
+
+// BlocklistItem is a release the service refuses to grab again.
+type BlocklistItem struct {
+	ID          int    `json:"id"`
+	SeriesID    int    `json:"seriesId,omitempty"`
+	MovieID     int    `json:"movieId,omitempty"`
+	SourceTitle string `json:"sourceTitle"`
+	Date        string `json:"date,omitempty"`
+	Protocol    string `json:"protocol,omitempty"`
+	Indexer     string `json:"indexer,omitempty"`
+	Quality     string `json:"quality,omitempty"`
+	Message     string `json:"message,omitempty" jsonschema:"why the release was blocklisted"`
+}
+
+// rawBlocklistItem mirrors the upstream row. Every row embeds the full series
+// or movie resource it belongs to, which is most of its four kilobytes; there
+// is no member for it here, so it cannot ride along.
+type rawBlocklistItem struct {
+	ID          int    `json:"id"`
+	SeriesID    int    `json:"seriesId"`
+	MovieID     int    `json:"movieId"`
+	SourceTitle string `json:"sourceTitle"`
+	Date        string `json:"date"`
+	Protocol    string `json:"protocol"`
+	Indexer     string `json:"indexer"`
+	Message     string `json:"message"`
+	Quality     struct {
+		Quality struct {
+			Name string `json:"name"`
+		} `json:"quality"`
+	} `json:"quality"`
+}
+
+// Task is a scheduled background job.
+type Task struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	TaskName      string `json:"taskName,omitempty" jsonschema:"the name to pass to the run_command tool"`
+	Interval      int    `json:"interval,omitempty" jsonschema:"minutes between runs"`
+	LastExecution string `json:"lastExecution,omitempty"`
+	NextExecution string `json:"nextExecution,omitempty"`
+}
+
+// UpdatePackage is one release of the service. The changelog is deliberately
+// dropped: it is several paragraphs per release and answers nothing a caller
+// asks an *arr instance.
+type UpdatePackage struct {
+	Version     string `json:"version"`
+	Branch      string `json:"branch,omitempty"`
+	ReleaseDate string `json:"releaseDate,omitempty"`
+	Installed   bool   `json:"installed"`
+	InstalledOn string `json:"installedOn,omitempty"`
+	Installable bool   `json:"installable"`
+	Latest      bool   `json:"latest"`
+}
+
+// QueueStatus summarises the download queue without listing it.
+type QueueStatus struct {
+	TotalCount   int  `json:"totalCount"`
+	Count        int  `json:"count"`
+	UnknownCount int  `json:"unknownCount,omitempty"`
+	Errors       bool `json:"errors"`
+	Warnings     bool `json:"warnings"`
+}
+
+// ListBlocklist returns blocklisted releases newest first, with the total
+// number held. The page is capped, so the total is the only honest answer to
+// "how many releases are blocklisted?".
+func ListBlocklist(ctx context.Context, c *Client, pageSize int) ([]BlocklistItem, int, error) {
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	env, err := GetJSON[paged[rawBlocklistItem]](ctx, c, "/blocklist", Query{
+		"pageSize":      strconv.Itoa(pageSize),
+		"sortKey":       "date",
+		"sortDirection": "descending",
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]BlocklistItem, 0, len(env.Records))
+	for _, r := range env.Records {
+		out = append(out, BlocklistItem{
+			ID: r.ID, SeriesID: r.SeriesID, MovieID: r.MovieID,
+			SourceTitle: r.SourceTitle, Date: r.Date, Protocol: r.Protocol,
+			Indexer: r.Indexer, Quality: r.Quality.Quality.Name, Message: r.Message,
+		})
+	}
+	return out, env.TotalRecords, nil
+}
+
+// DeleteBlocklistItem removes one release from the blocklist, letting the
+// service grab it again.
+func DeleteBlocklistItem(ctx context.Context, c *Client, id int) error {
+	_, err := c.Delete(ctx, "/blocklist/"+itoa(id))
+	return err
+}
+
+// ListTasks returns the scheduled background jobs and when they last ran.
+func ListTasks(ctx context.Context, c *Client) ([]Task, error) {
+	return GetJSON[[]Task](ctx, c, "/system/task")
+}
+
+// ListUpdates returns the releases the service knows about.
+func ListUpdates(ctx context.Context, c *Client) ([]UpdatePackage, error) {
+	return GetJSON[[]UpdatePackage](ctx, c, "/update")
+}
+
+// GetQueueStatus summarises the download queue in one small record.
+func GetQueueStatus(ctx context.Context, c *Client) (QueueStatus, error) {
+	return GetJSON[QueueStatus](ctx, c, "/queue/status")
+}
