@@ -12,10 +12,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Version is the reported server version. Overridden at build time with
-// -ldflags "-X github.com/GauranshMathur/ARR_MCP/pkg/server.Version=v1.2.3".
-var Version = "dev"
-
 // Server wires configured service instances into an MCP server.
 type Server struct {
 	cfg *config.Config
