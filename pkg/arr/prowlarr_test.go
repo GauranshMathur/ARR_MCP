@@ -474,3 +474,33 @@ func TestProwlarrDeleteIndexerTargetsTheIndexer(t *testing.T) {
 		t.Errorf("request = %s %s, want DELETE /api/v1/indexer/15", (*seen)[0].method, (*seen)[0].path)
 	}
 }
+
+// The mask exists only in the projection returned to the model. An update
+// that does not mention a credential must send the real value back, because
+// the request is built from the raw upstream resource. Projecting the trimmed
+// struct into the PUT instead would write the literal "***" over every stored
+// password on the next unrelated edit, which upstream would accept silently.
+func TestProwlarrUpdateIndexerNeverWritesTheMaskOverUntouchedSecrets(t *testing.T) {
+	srv, seen := prowlarrFake(t, map[string]prowlarrRoute{
+		"GET /api/v1/indexer/15": {200, indexerWithSecrets},
+		"PUT /api/v1/indexer/15": {200, indexerWithSecrets},
+	})
+
+	priority := 30
+	if _, err := ProwlarrUpdateIndexer(context.Background(), prowlarrClient(srv.URL), IndexerUpdateRequest{
+		ID:       15,
+		Priority: &priority,
+	}); err != nil {
+		t.Fatalf("ProwlarrUpdateIndexer returned error: %v", err)
+	}
+
+	body := (*seen)[1].body
+	if strings.Contains(body, secretMask) {
+		t.Errorf("PUT body carries the redaction mask, which would erase the stored credential: %s", body)
+	}
+	for _, secret := range []string{"indexer-api-key-value", "indexer-password-value", "indexer-user-value"} {
+		if !strings.Contains(body, secret) {
+			t.Errorf("PUT body dropped the untouched credential %q: %s", secret, body)
+		}
+	}
+}
