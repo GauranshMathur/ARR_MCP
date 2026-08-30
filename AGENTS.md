@@ -9,6 +9,7 @@ Conventions for working in this repository. Read this before adding a service or
 3. **Never write to stdout.** Under the stdio transport, stdout carries the JSON-RPC stream. A single stray `fmt.Println` corrupts the framing and kills the session. Logging goes to stderr; `TestLoggerDefaultsToStderr` pins this.
 4. **Conventional commits.** `feat(scope):`, `fix(scope):`, `docs:`, `build:`, `ci:`, `test:`, `chore:`. release-please builds the changelog from these, so the subject line is user-facing. Explain *why* in the body.
 5. **One feature per branch, one branch per worktree.** See "Worktrees".
+6. **One release per feature.** See "Releasing".
 
 ## Researching a service
 
@@ -77,6 +78,20 @@ git worktree add .claude/worktrees/<name> -b feat/<name> origin/main
 Branch from `origin/main` unless the work depends on an unmerged branch; then base on that branch and open the PR stacked on it. GitHub retargets stacked PRs automatically when the base merges.
 
 Keep each branch to its own files where possible: new services get their own `register_<service>.go`, `tools_<service>.go` and test files, so parallel worktrees only ever conflict on the one-line `registerAll` entry and their own README section.
+
+## Releasing
+
+**Merge with an empty body:**
+
+```bash
+gh pr merge <n> --merge --body ""
+```
+
+GitHub's default merge commit repeats the PR title in its body, and release-please parses that as a second conventional commit — which is why every entry in the changelog before v1.1.0 appears twice. An empty body leaves only `Merge pull request #n from …`, which is not a conventional commit, so each change is listed once.
+
+**One release per feature.** release-please keeps a single rolling release PR that every merged `feat:`/`fix:` updates; a release is cut when *that* PR merges, not when a feature merges. So after merging a feature PR, wait for the release PR to regenerate and merge it too. Letting several features pile into one release PR is not wrong, just a different cadence — this repo's is one feature, one version, one image.
+
+Merging the release PR tags the version and publishes to GHCR in the same run. Never hand-edit a version or `CHANGELOG.md`; release-please owns both.
 
 ## Before you claim done
 
