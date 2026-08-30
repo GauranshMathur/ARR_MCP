@@ -86,6 +86,26 @@ go vet ./...            # must be clean
 gofmt -l .              # must be empty
 ```
 
+Those three are not the whole gate. CI also runs three tools that catch things
+`go vet` does not, so run them here rather than discovering them in a red PR:
+
+```bash
+golangci-lint run       # pinned to the version in .github/workflows/ci.yml
+gosec -quiet ./...
+trivy fs --ignorefile .trivyignore.yaml --scanners vuln,secret,misconfig \
+  --severity CRITICAL,HIGH,MEDIUM .
+```
+
+Two of these have bitten already. staticcheck rejects `!(a && b)` and wants the
+De Morgan form. gosec reports any `http.Cookie` literal as missing `Secure`,
+`HttpOnly` and `SameSite`, even on an *outbound request* cookie where those
+attributes do not exist and are never serialised — set the `Cookie` header
+directly instead. Trivy's misconfiguration checks match ConfigMap **key names**
+(`password`, `apiKey`, `username`), not values, so the deployment example trips
+them despite holding only `${VAR}` placeholders; the exception lives in
+`.trivyignore.yaml`, scoped to that path with its reason recorded. Scope any new
+exception the same way, and never ignore a secret-scanner finding.
+
 Then verify the protocol actually works, because unit tests do not prove MCP compliance:
 
 ```bash
