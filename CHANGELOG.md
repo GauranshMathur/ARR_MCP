@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.1.1...v1.2.0) (2026-08-30)
+
+
+### Features
+
+* **arr:** add interactive release search, manual import and library edits ([1fdac8a](https://github.com/GauranshMathur/ARR_MCP/commit/1fdac8aa33ea1e2aa01242c7bb2dbdaff7aed4b3))
+
 ## [1.1.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.1.0...v1.1.1) (2026-08-30)
 
 
