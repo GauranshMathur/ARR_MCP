@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **203 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — what you would otherwise do by clicking through each web UI
+- **215 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -298,7 +298,7 @@ pointed at directly by Argo CD or `kubectl apply -k`.
 
 ## Tools
 
-Sonarr and Radarr are kept at parity: 42 of their tool names are common to both,
+Sonarr and Radarr are kept at parity: 48 of their tool names are common to both,
 and the rest differ only where the APIs genuinely do (seasons and episodes
 versus movies and collections).
 
@@ -308,7 +308,7 @@ against every configured indexer and reports why each release would be accepted
 or rejected, `*_grab_release` takes one anyway, and the `*_manual_import` pair
 previews and then imports files the automatic importer could not place.
 
-### Sonarr (54)
+### Sonarr (60)
 
 | Area | Tools | Access |
 |---|---|---|
@@ -318,15 +318,17 @@ previews and then imports files the automatic importer could not place.
 | Files | `sonarr_list_episode_files`, `sonarr_rename_preview` | read |
 | Profiles | `sonarr_list_quality_profiles`, `sonarr_list_quality_definitions`, `sonarr_list_custom_formats`, `sonarr_list_delay_profiles`, `sonarr_list_release_profiles` | read |
 | Config | `sonarr_list_root_folders`, `sonarr_naming_config`, `sonarr_list_indexers`, `sonarr_list_download_clients`, `sonarr_list_import_lists`, `sonarr_list_notifications` | read |
+| Providers | `sonarr_provider_schemas`, `sonarr_get_provider` | read |
 | Tags | `sonarr_list_tags`, `sonarr_tag_details` | read |
 | Operations | `sonarr_queue`, `sonarr_queue_status`, `sonarr_history`, `sonarr_blocklist`, `sonarr_health`, `sonarr_disk_space`, `sonarr_system_status`, `sonarr_list_tasks`, `sonarr_list_updates` | read |
 | Add & edit | `sonarr_add_series`, `sonarr_edit_series`, `sonarr_set_season_monitored`, `sonarr_monitor_episodes`, `sonarr_create_tag`, `sonarr_update_tag` | write |
 | Search & import | `sonarr_grab_release`, `sonarr_grab_queue_item`, `sonarr_manual_import`, `sonarr_mark_history_failed` | write |
 | Files | `sonarr_rename_files`, `sonarr_update_files` | write |
+| Providers | `sonarr_add_provider`, `sonarr_update_provider`, `sonarr_test_provider` | write |
 | Automation | `sonarr_trigger_search`, `sonarr_refresh_series`, `sonarr_run_command` | write |
-| Deletion | `sonarr_delete_series`, `sonarr_delete_episode_files`, `sonarr_delete_queue_item`, `sonarr_delete_queue_items`, `sonarr_delete_blocklist_item`, `sonarr_delete_tag` | destructive |
+| Deletion | `sonarr_delete_series`, `sonarr_delete_episode_files`, `sonarr_delete_queue_item`, `sonarr_delete_queue_items`, `sonarr_delete_blocklist_item`, `sonarr_delete_provider`, `sonarr_delete_tag` | destructive |
 
-### Radarr (53)
+### Radarr (59)
 
 | Area | Tools | Access |
 |---|---|---|
@@ -336,13 +338,15 @@ previews and then imports files the automatic importer could not place.
 | Files | `radarr_list_movie_files`, `radarr_rename_preview` | read |
 | Profiles | `radarr_list_quality_profiles`, `radarr_list_quality_definitions`, `radarr_list_custom_formats`, `radarr_list_delay_profiles`, `radarr_list_release_profiles` | read |
 | Config | `radarr_list_root_folders`, `radarr_naming_config`, `radarr_list_indexers`, `radarr_list_download_clients`, `radarr_list_import_lists`, `radarr_list_notifications` | read |
+| Providers | `radarr_provider_schemas`, `radarr_get_provider` | read |
 | Tags | `radarr_list_tags`, `radarr_tag_details` | read |
 | Operations | `radarr_queue`, `radarr_queue_status`, `radarr_history`, `radarr_blocklist`, `radarr_health`, `radarr_disk_space`, `radarr_system_status`, `radarr_list_tasks`, `radarr_list_updates` | read |
 | Add & edit | `radarr_add_movie`, `radarr_edit_movies`, `radarr_update_collection`, `radarr_create_tag`, `radarr_update_tag` | write |
 | Search & import | `radarr_grab_release`, `radarr_grab_queue_item`, `radarr_manual_import`, `radarr_mark_history_failed` | write |
 | Files | `radarr_rename_files`, `radarr_update_files` | write |
+| Providers | `radarr_add_provider`, `radarr_update_provider`, `radarr_test_provider` | write |
 | Automation | `radarr_trigger_search`, `radarr_refresh_movies`, `radarr_run_command` | write |
-| Deletion | `radarr_delete_movie`, `radarr_delete_movie_files`, `radarr_delete_queue_item`, `radarr_delete_queue_items`, `radarr_delete_blocklist_item`, `radarr_delete_tag` | destructive |
+| Deletion | `radarr_delete_movie`, `radarr_delete_movie_files`, `radarr_delete_queue_item`, `radarr_delete_queue_items`, `radarr_delete_blocklist_item`, `radarr_delete_provider`, `radarr_delete_tag` | destructive |
 
 ### Bazarr (33)
 
@@ -473,6 +477,12 @@ Prowlarr's indexer tools do return that array, because you cannot configure an
 indexer without knowing its field names — but every field whose upstream
 `privacy` is anything other than `normal` reports `***` in place of its value,
 which covers Prowlarr's `apiKey`, `password` and `userName` fields.
+
+Sonarr's and Radarr's provider tools (`*_get_provider`, `*_add_provider`,
+`*_update_provider`) redact that same array by the same rule, so an indexer's
+API key or a download client's password is reported as `***` while its field
+name still is not. Editing a provider sends the stored values back untouched:
+the mask is never written over a credential the caller did not change.
 
 Services with no configured instances register no tools at all, so the advertised list always reflects what is actually reachable.
 
