@@ -281,6 +281,146 @@ type DeleteMovieSubtitleArgs struct {
 	HI       bool   `json:"hi,omitempty" jsonschema:"hearing impaired subtitle"`
 }
 
+// SetSeriesProfileArgs assigns a Bazarr languages profile to series.
+type SetSeriesProfileArgs struct {
+	InstanceArg
+	SeriesIDs []int `json:"seriesIds" jsonschema:"sonarrSeriesId values from bazarr_list_series"`
+	ProfileID int   `json:"profileId" jsonschema:"profileId from bazarr_list_language_profiles; 0 unassigns the profile and stops subtitle fetching"`
+}
+
+// SetMovieProfileArgs assigns a Bazarr languages profile to movies.
+type SetMovieProfileArgs struct {
+	InstanceArg
+	RadarrIDs []int `json:"radarrIds" jsonschema:"radarrId values from bazarr_list_movies"`
+	ProfileID int   `json:"profileId" jsonschema:"profileId from bazarr_list_language_profiles; 0 unassigns the profile and stops subtitle fetching"`
+}
+
+// SeriesActionArgs runs one Bazarr maintenance action against a series.
+type SeriesActionArgs struct {
+	InstanceArg
+	SeriesID int    `json:"seriesId" jsonschema:"sonarrSeriesId from bazarr_list_series"`
+	Action   string `json:"action" jsonschema:"scan-disk, search-missing or search-wanted"`
+}
+
+// MovieActionArgs runs one Bazarr maintenance action against a movie.
+type MovieActionArgs struct {
+	InstanceArg
+	RadarrID int    `json:"radarrId" jsonschema:"radarrId from bazarr_list_movies"`
+	Action   string `json:"action" jsonschema:"scan-disk, search-missing or search-wanted"`
+}
+
+// ManualSearchEpisodeArgs selects the episode to search providers for.
+type ManualSearchEpisodeArgs struct {
+	InstanceArg
+	EpisodeID int `json:"episodeId" jsonschema:"sonarrEpisodeId from bazarr_wanted_episodes or bazarr_list_episode_subtitles"`
+}
+
+// ManualSearchMovieArgs selects the movie to search providers for.
+type ManualSearchMovieArgs struct {
+	InstanceArg
+	RadarrID int `json:"radarrId" jsonschema:"radarrId from bazarr_wanted_movies or bazarr_list_movies"`
+}
+
+// DownloadEpisodeSubtitleArgs downloads one manual search result.
+type DownloadEpisodeSubtitleArgs struct {
+	InstanceArg
+	SeriesID       int    `json:"seriesId" jsonschema:"sonarrSeriesId of the episode"`
+	EpisodeID      int    `json:"episodeId" jsonschema:"sonarrEpisodeId the search was run for"`
+	Provider       string `json:"provider" jsonschema:"provider from bazarr_manual_search_episode, unchanged"`
+	Subtitle       string `json:"subtitle" jsonschema:"subtitle token from bazarr_manual_search_episode, unchanged"`
+	HI             bool   `json:"hi,omitempty" jsonschema:"the candidate's hearingImpaired value"`
+	Forced         bool   `json:"forced,omitempty" jsonschema:"the candidate's forced value"`
+	OriginalFormat bool   `json:"originalFormat,omitempty" jsonschema:"keep the provider's subtitle format instead of converting to srt"`
+}
+
+// DownloadMovieSubtitleArgs downloads one manual search result for a movie.
+type DownloadMovieSubtitleArgs struct {
+	InstanceArg
+	RadarrID       int    `json:"radarrId" jsonschema:"radarrId the search was run for"`
+	Provider       string `json:"provider" jsonschema:"provider from bazarr_manual_search_movie, unchanged"`
+	Subtitle       string `json:"subtitle" jsonschema:"subtitle token from bazarr_manual_search_movie, unchanged"`
+	HI             bool   `json:"hi,omitempty" jsonschema:"the candidate's hearingImpaired value"`
+	Forced         bool   `json:"forced,omitempty" jsonschema:"the candidate's forced value"`
+	OriginalFormat bool   `json:"originalFormat,omitempty" jsonschema:"keep the provider's subtitle format instead of converting to srt"`
+}
+
+// EpisodeHistoryArgs pages Bazarr's episode subtitle history.
+type EpisodeHistoryArgs struct {
+	InstanceArg
+	Start     int `json:"start,omitempty" jsonschema:"offset into the result set; defaults to 0"`
+	Length    int `json:"length,omitempty" jsonschema:"maximum records to return; defaults to 50"`
+	EpisodeID int `json:"episodeId,omitempty" jsonschema:"limit to one episode by sonarrEpisodeId"`
+}
+
+// MovieHistoryArgs pages Bazarr's movie subtitle history.
+type MovieHistoryArgs struct {
+	InstanceArg
+	Start    int `json:"start,omitempty" jsonschema:"offset into the result set; defaults to 0"`
+	Length   int `json:"length,omitempty" jsonschema:"maximum records to return; defaults to 50"`
+	RadarrID int `json:"radarrId,omitempty" jsonschema:"limit to one movie by radarrId"`
+}
+
+// BlacklistPageArgs pages one of Bazarr's two subtitle blacklists.
+type BlacklistPageArgs struct {
+	InstanceArg
+	Kind   string `json:"kind" jsonschema:"which blacklist to read: episodes or movies"`
+	Start  int    `json:"start,omitempty" jsonschema:"offset into the result set; defaults to 0"`
+	Length int    `json:"length,omitempty" jsonschema:"maximum records to return; defaults to all"`
+}
+
+// BlacklistSubtitleArgs blacklists one downloaded subtitle.
+type BlacklistSubtitleArgs struct {
+	InstanceArg
+	Kind          string `json:"kind" jsonschema:"episodes or movies"`
+	SeriesID      int    `json:"seriesId,omitempty" jsonschema:"sonarrSeriesId; required when kind is episodes"`
+	EpisodeID     int    `json:"episodeId,omitempty" jsonschema:"sonarrEpisodeId; required when kind is episodes"`
+	RadarrID      int    `json:"radarrId,omitempty" jsonschema:"radarrId; required when kind is movies"`
+	Provider      string `json:"provider" jsonschema:"provider from bazarr_episode_history or bazarr_movie_history"`
+	SubsID        string `json:"subsId" jsonschema:"subs_id from the same history record"`
+	Language      string `json:"language" jsonschema:"two-letter language code of the subtitle"`
+	SubtitlesPath string `json:"subtitlesPath" jsonschema:"subtitles_path from the same history record"`
+}
+
+// DeleteBlacklistArgs removes blacklist entries.
+type DeleteBlacklistArgs struct {
+	InstanceArg
+	Kind     string `json:"kind" jsonschema:"episodes or movies"`
+	Provider string `json:"provider,omitempty" jsonschema:"provider from bazarr_list_blacklist; required unless all is true"`
+	SubsID   string `json:"subsId,omitempty" jsonschema:"subs_id from bazarr_list_blacklist; required unless all is true"`
+	All      bool   `json:"all,omitempty" jsonschema:"empty the whole blacklist instead of removing one entry"`
+}
+
+// RunTaskArgs runs one Bazarr scheduled job now.
+type RunTaskArgs struct {
+	InstanceArg
+	TaskID string `json:"taskId" jsonschema:"job_id from bazarr_list_tasks"`
+}
+
+// ModifySubtitleArgs edits an existing subtitle file in place.
+type ModifySubtitleArgs struct {
+	InstanceArg
+	Action           string `json:"action" jsonschema:"sync, translate, or a mod: remove_HI, remove_tags, OCR_fixes, common, fix_uppercase, reverse_rtl"`
+	Path             string `json:"path" jsonschema:"subtitle file path from bazarr_list_episode_subtitles"`
+	Language         string `json:"language" jsonschema:"the subtitle's two-letter language code, or the target code when translating"`
+	MediaType        string `json:"mediaType" jsonschema:"episode or movie"`
+	MediaID          int    `json:"mediaId" jsonschema:"sonarrEpisodeId for an episode, radarrId for a movie"`
+	Forced           bool   `json:"forced,omitempty" jsonschema:"the subtitle is a forced track"`
+	HI               bool   `json:"hi,omitempty" jsonschema:"the subtitle is a hearing impaired track"`
+	OriginalFormat   bool   `json:"originalFormat,omitempty" jsonschema:"keep the original subtitle format instead of converting to srt"`
+	Reference        string `json:"reference,omitempty" jsonschema:"sync reference: an audio track such as a:0 from bazarr_subtitle_info, or another subtitle path; defaults to the video"`
+	MaxOffsetSeconds int    `json:"maxOffsetSeconds,omitempty" jsonschema:"largest shift a sync may apply; defaults to Bazarr's setting"`
+	NoFixFramerate   bool   `json:"noFixFramerate,omitempty" jsonschema:"do not let a sync correct the framerate"`
+	GSS              bool   `json:"gss,omitempty" jsonschema:"use Golden-Section Search when syncing"`
+}
+
+// SubtitleInfoArgs inspects the tracks around one subtitle file.
+type SubtitleInfoArgs struct {
+	InstanceArg
+	Path      string `json:"path" jsonschema:"subtitle file path from bazarr_list_episode_subtitles"`
+	EpisodeID int    `json:"episodeId,omitempty" jsonschema:"sonarrEpisodeId the subtitle belongs to"`
+	RadarrID  int    `json:"radarrId,omitempty" jsonschema:"radarrId the subtitle belongs to"`
+}
+
 // SeriesSubtitlesArgs selects a series whose per-episode subtitles to list.
 type SeriesSubtitlesArgs struct {
 	InstanceArg
@@ -338,6 +478,38 @@ type SubtitleProviderList struct {
 // LanguageList wraps subtitle languages.
 type LanguageList struct {
 	Languages []arr.SubtitleLanguage `json:"languages"`
+}
+
+// LanguageProfileList wraps Bazarr languages profiles.
+type LanguageProfileList struct {
+	Profiles []arr.LanguageProfile `json:"profiles"`
+	Count    int                   `json:"count"`
+}
+
+// SubtitleCandidateList wraps manual search results.
+type SubtitleCandidateList struct {
+	Candidates []arr.SubtitleCandidate `json:"candidates"`
+	Count      int                     `json:"count"`
+}
+
+// SubtitleHistoryList wraps Bazarr subtitle history.
+type SubtitleHistoryList struct {
+	Records []arr.SubtitleHistoryRecord `json:"records"`
+	Count   int                         `json:"count"`
+	Total   int                         `json:"total" jsonschema:"records available across all pages"`
+}
+
+// SubtitleBlacklistList wraps blacklisted subtitles.
+type SubtitleBlacklistList struct {
+	Items []arr.SubtitleBlacklistItem `json:"items"`
+	Count int                         `json:"count"`
+}
+
+// BazarrTaskList wraps Bazarr scheduled jobs. Distinct from TaskList, which
+// covers the *arr apps' own task shape.
+type BazarrTaskList struct {
+	Tasks []arr.BazarrTask `json:"tasks"`
+	Count int              `json:"count"`
 }
 
 // StatusMap wraps a free-form status payload.
