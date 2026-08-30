@@ -98,7 +98,9 @@ type SearchArgs struct {
 	Query string `json:"query" jsonschema:"title to search for"`
 }
 
-// AddSeriesArgs is the input for sonarr_add_series.
+// AddSeriesArgs is the input for sonarr_add_series. The optional settings are
+// pointers or empty strings so that omitting one keeps the behaviour this tool
+// had before they existed: monitor everything, in season folders.
 type AddSeriesArgs struct {
 	InstanceArg
 	TVDBID           int    `json:"tvdbId" jsonschema:"TheTVDB id from sonarr_search_series"`
@@ -106,16 +108,24 @@ type AddSeriesArgs struct {
 	QualityProfileID int    `json:"qualityProfileId" jsonschema:"id from sonarr_list_quality_profiles"`
 	RootFolderPath   string `json:"rootFolderPath" jsonschema:"path from sonarr_list_root_folders"`
 	SearchNow        bool   `json:"searchNow,omitempty" jsonschema:"start searching for episodes immediately"`
+	Monitor          string `json:"monitor,omitempty" jsonschema:"which episodes to monitor: all, future, missing, existing, firstSeason, lastSeason or none; defaults to all"`
+	SeriesType       string `json:"seriesType,omitempty" jsonschema:"standard, daily or anime; defaults to standard"`
+	SeasonFolder     *bool  `json:"seasonFolder,omitempty" jsonschema:"store each season in its own folder; defaults to true"`
+	Tags             []int  `json:"tags,omitempty" jsonschema:"tag ids from sonarr_list_tags"`
 }
 
-// AddMovieArgs is the input for radarr_add_movie.
+// AddMovieArgs is the input for radarr_add_movie. As with AddSeriesArgs, an
+// omitted optional keeps the previous default rather than sending a zero value.
 type AddMovieArgs struct {
 	InstanceArg
-	TMDBID           int    `json:"tmdbId" jsonschema:"TMDB id from radarr_search_movies"`
-	Title            string `json:"title,omitempty"`
-	QualityProfileID int    `json:"qualityProfileId" jsonschema:"id from radarr_list_quality_profiles"`
-	RootFolderPath   string `json:"rootFolderPath" jsonschema:"path from radarr_list_root_folders"`
-	SearchNow        bool   `json:"searchNow,omitempty" jsonschema:"start searching for the movie immediately"`
+	TMDBID              int    `json:"tmdbId" jsonschema:"TMDB id from radarr_search_movies"`
+	Title               string `json:"title,omitempty"`
+	QualityProfileID    int    `json:"qualityProfileId" jsonschema:"id from radarr_list_quality_profiles"`
+	RootFolderPath      string `json:"rootFolderPath" jsonschema:"path from radarr_list_root_folders"`
+	SearchNow           bool   `json:"searchNow,omitempty" jsonschema:"start searching for the movie immediately"`
+	MinimumAvailability string `json:"minimumAvailability,omitempty" jsonschema:"tba, announced, inCinemas or released; defaults to released"`
+	Monitored           *bool  `json:"monitored,omitempty" jsonschema:"monitor the movie; defaults to true"`
+	Tags                []int  `json:"tags,omitempty" jsonschema:"tag ids from radarr_list_tags"`
 }
 
 // DeleteArgs is the input for deletion tools.

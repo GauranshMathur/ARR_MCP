@@ -66,16 +66,23 @@ func trimSeries(raw []rawSeries) []Series {
 	return out
 }
 
-// AddSeriesRequest describes a series to add to a Sonarr library.
+// AddSeriesRequest describes a series to add to a Sonarr library. SeasonFolder
+// is a pointer so that omitting it leaves the service's own default in place
+// rather than forcing a flat folder layout.
 type AddSeriesRequest struct {
 	TVDBID           int    `json:"tvdbId"`
 	Title            string `json:"title"`
 	QualityProfileID int    `json:"qualityProfileId"`
 	RootFolderPath   string `json:"rootFolderPath"`
 	Monitored        bool   `json:"monitored"`
-	SeasonFolder     bool   `json:"seasonFolder"`
+	SeasonFolder     *bool  `json:"seasonFolder,omitempty"`
+	SeriesType       string `json:"seriesType,omitempty" jsonschema:"standard, daily or anime"`
+	Tags             []int  `json:"tags,omitempty"`
 	AddOptions       struct {
 		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+		// Monitor selects which episodes to monitor on add: all, future,
+		// missing, existing, firstSeason, lastSeason or none.
+		Monitor string `json:"monitor,omitempty"`
 	} `json:"addOptions"`
 }
 

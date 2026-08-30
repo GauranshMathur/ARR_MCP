@@ -66,6 +66,7 @@ type AddMovieRequest struct {
 	RootFolderPath      string `json:"rootFolderPath"`
 	Monitored           bool   `json:"monitored"`
 	MinimumAvailability string `json:"minimumAvailability,omitempty"`
+	Tags                []int  `json:"tags,omitempty"`
 	AddOptions          struct {
 		SearchForMovie bool `json:"searchForMovie"`
 	} `json:"addOptions"`
