@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.2.0...v1.2.1) (2026-08-30)
+
+
+### Documentation
+
+* correct the headline tool count and service list ([c2b9e13](https://github.com/GauranshMathur/ARR_MCP/commit/c2b9e13d41cd1b03a936ada5ac53646603350cd5))
+
 ## [1.2.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.1.1...v1.2.0) (2026-08-30)
 
 
