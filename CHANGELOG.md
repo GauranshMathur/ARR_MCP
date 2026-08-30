@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.1.0...v1.1.1) (2026-08-30)
+
+
+### Documentation
+
+* write down the release cadence and the empty-body merge rule ([f677696](https://github.com/GauranshMathur/ARR_MCP/commit/f6776964dd86b97f4e06a7b71921be9889ef7c9a))
+
 ## [1.1.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.4...v1.1.0) (2026-08-30)
 
 
