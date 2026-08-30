@@ -125,14 +125,6 @@ type DeleteArgs struct {
 	DeleteFiles bool `json:"deleteFiles,omitempty" jsonschema:"also delete downloaded files from disk"`
 }
 
-// ProwlarrSearchArgs is the input for prowlarr_search.
-type ProwlarrSearchArgs struct {
-	InstanceArg
-	Query      string `json:"query" jsonschema:"search term"`
-	Categories []int  `json:"categories,omitempty" jsonschema:"newznab category ids to filter by"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"maximum results to return; defaults to 25"`
-}
-
 // --- tool output types ---
 
 // SeriesList wraps series results.
@@ -157,18 +149,6 @@ type ProfileList struct {
 // FolderList wraps root folder results.
 type FolderList struct {
 	Folders []arr.RootFolder `json:"folders"`
-}
-
-// IndexerList wraps indexer results.
-type IndexerList struct {
-	Indexers []arr.Indexer `json:"indexers"`
-	Count    int           `json:"count"`
-}
-
-// ReleaseList wraps indexer search results.
-type ReleaseList struct {
-	Releases []arr.SearchResult `json:"releases"`
-	Count    int                `json:"count"`
 }
 
 // Deleted reports the outcome of a deletion.
@@ -243,11 +223,6 @@ type EpisodeList struct {
 	Episodes []arr.Episode `json:"episodes"`
 	Count    int           `json:"count"`
 	Total    int           `json:"total,omitempty" jsonschema:"records available across all pages"`
-}
-
-// IndexerStatList wraps Prowlarr indexer statistics.
-type IndexerStatList struct {
-	Stats []arr.IndexerStat `json:"stats"`
 }
 
 // --- bazarr tool inputs ---
