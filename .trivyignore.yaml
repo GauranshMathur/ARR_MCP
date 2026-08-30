@@ -1,0 +1,18 @@
+# Trivy exceptions. Each entry is scoped to a path and carries the reason, so
+# an exception cannot quietly widen to cover a real finding elsewhere.
+
+misconfigurations:
+  # The deployment ConfigMap is a template: every credential in it is a ${VAR}
+  # reference expanded at startup from the Secret next to it (see
+  # secret.example.yaml and the envFrom in deployment.yaml). Trivy matches on
+  # the key names -- apiKey, username, password -- not on the values, so the
+  # placeholders read as secrets to it. A real secret committed here would be
+  # caught by the secret scanner, which is not ignored.
+  - id: KSV-0109
+    paths:
+      - "deploy/kubernetes/configmap.yaml"
+    statement: ConfigMap holds ${VAR} placeholders; real values live in the Secret.
+  - id: KSV-01010
+    paths:
+      - "deploy/kubernetes/configmap.yaml"
+    statement: ConfigMap holds ${VAR} placeholders; real values live in the Secret.

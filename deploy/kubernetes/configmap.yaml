@@ -1,5 +1,5 @@
-# Non-secret configuration. Only API keys live in the Secret; everything here is
-# safe to commit, which is the point of the ${VAR} references.
+# Non-secret configuration. Only API keys and passwords live in the Secret;
+# everything here is safe to commit, which is the point of the ${VAR} references.
 #
 # Service URLs must be resolvable FROM THIS POD. Use in-cluster DNS
 # (http://sonarr.media.svc.cluster.local:8989) when the *arr apps run in the
@@ -52,3 +52,16 @@ data:
           url: http://bazarr.media.svc.cluster.local:6767
           apiKey: ${BAZARR_TV_API_KEY}
           default: true
+
+      # Download clients authenticate with a username and password.
+      qbittorrent:
+        - name: main
+          url: http://qbittorrent.media.svc.cluster.local:8080
+          username: admin
+          password: ${QBITTORRENT_PASSWORD}
+
+      nzbget:
+        - name: main
+          url: http://nzbget.media.svc.cluster.local:6789
+          username: nzbget
+          password: ${NZBGET_PASSWORD}

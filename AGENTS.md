@@ -36,13 +36,13 @@ Record anything surprising in the commit body. Real examples already found: Prow
 
 Adding a service should mean *describing* it, not writing a new client.
 
-1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`.
-2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`.
-3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`.
-4. Add `pkg/server/register_<service>.go` and call it from `registerAll`.
-5. Add the service to `README.md`, `config.example.yaml` and `.env.example`.
+1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`. Auth schemes: `AuthHeaderKey` (the \*arr apps, Bazarr), `AuthBasic` (NZBGet), `AuthSession` (qBittorrent's form login + cookie).
+2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`. If it authenticates with a username and password rather than an API key, add it to `serviceCredentials` too — that drives config validation and the `<SERVICE>_USERNAME`/`<SERVICE>_PASSWORD` env fallback.
+3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`. Two call shapes exist: REST services use `GetJSON`/`Post`/`PostForm`; NZBGet's JSON-RPC goes through `nzbCall` in `nzbget.go`.
+4. Add `pkg/server/register_<service>.go` and `pkg/server/tools_<service>.go` (input/output structs), and call the register function from `registerAll`. Server-level tests go in `register_<service>_test.go`, not `server_test.go`.
+5. Add the service to `README.md`, `config.example.yaml`, `.env.example` and `deploy/kubernetes/`.
 
-If a service does not fit `ServiceSpec` at all, that is a signal — say so before writing a bespoke client. Download clients were rejected on exactly this basis; see the Scope section of the README.
+If a service does not fit any existing auth scheme, that is a signal — say so before adding one. The two that exist beyond `AuthHeaderKey` were added deliberately, one each.
 
 ## Tool design
 
@@ -71,12 +71,12 @@ Be honest about the tier. Getting it wrong is how a library gets deleted without
 Feature work happens in parallel worktrees under `.claude/worktrees/` (gitignored):
 
 ```bash
-git worktree add .claude/worktrees/<name> -b feat/<name> feat/mcp-rewrite
+git worktree add .claude/worktrees/<name> -b feat/<name> origin/main
 ```
 
-Branch from `feat/mcp-rewrite` until it merges — the foundation is not yet on `main`, so branching from `origin/main` loses everything.
+Branch from `origin/main` unless the work depends on an unmerged branch; then base on that branch and open the PR stacked on it. GitHub retargets stacked PRs automatically when the base merges.
 
-Open PRs stacked on the branch you based on. GitHub retargets them automatically when the base merges.
+Keep each branch to its own files where possible: new services get their own `register_<service>.go`, `tools_<service>.go` and test files, so parallel worktrees only ever conflict on the one-line `registerAll` entry and their own README section.
 
 ## Before you claim done
 
@@ -85,6 +85,26 @@ go test ./... -race     # must pass
 go vet ./...            # must be clean
 gofmt -l .              # must be empty
 ```
+
+Those three are not the whole gate. CI also runs three tools that catch things
+`go vet` does not, so run them here rather than discovering them in a red PR:
+
+```bash
+golangci-lint run       # pinned to the version in .github/workflows/ci.yml
+gosec -quiet ./...
+trivy fs --ignorefile .trivyignore.yaml --scanners vuln,secret,misconfig \
+  --severity CRITICAL,HIGH,MEDIUM .
+```
+
+Two of these have bitten already. staticcheck rejects `!(a && b)` and wants the
+De Morgan form. gosec reports any `http.Cookie` literal as missing `Secure`,
+`HttpOnly` and `SameSite`, even on an *outbound request* cookie where those
+attributes do not exist and are never serialised — set the `Cookie` header
+directly instead. Trivy's misconfiguration checks match ConfigMap **key names**
+(`password`, `apiKey`, `username`), not values, so the deployment example trips
+them despite holding only `${VAR}` placeholders; the exception lives in
+`.trivyignore.yaml`, scoped to that path with its reason recorded. Scope any new
+exception the same way, and never ignore a secret-scanner finding.
 
 Then verify the protocol actually works, because unit tests do not prove MCP compliance:
 

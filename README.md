@@ -106,9 +106,17 @@ exactly, with no surrounding whitespace.
 | Prowlarr | Settings → General → **Security** → API Key | 9696 |
 | Bazarr | Settings → General → **Security** → API Key | 6767 |
 
+The download clients have no API key; they take the same username and password you log
+into their web UI with:
+
+| Service | Where to click | Default port |
+|---|---|---|
+| qBittorrent | Tools → Options → **Web UI** → Authentication | 8080 |
+| NZBGet | Settings → **Security** → ControlUsername / ControlPassword | 6789 |
+
 Every one of these is a *full-access* credential for that application. ARR-MCP never
-needs more than one key per instance, and the [permission model](#permissions) is what
-narrows down what the model can actually do with it.
+needs more than one credential per instance, and the [permission model](#permissions) is
+what narrows down what the model can actually do with it.
 
 ## Do I need a config file?
 
@@ -127,7 +135,8 @@ environment variables entirely, it does not merge with them.
 
 ### Environment variables (one instance per service)
 
-Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` and run **without** `--config`:
+Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` — or, for `QBITTORRENT` and `NZBGET`,
+`<SERVICE>_USERNAME` and `<SERVICE>_PASSWORD` — and run **without** `--config`:
 
 ```bash
 SONARR_URL=http://192.168.10.12:8989
@@ -138,10 +147,16 @@ PROWLARR_URL=http://192.168.10.18:9696
 PROWLARR_API_KEY=...
 BAZARR_URL=http://192.168.10.16:6767
 BAZARR_API_KEY=...
+QBITTORRENT_URL=http://192.168.10.20:8080
+QBITTORRENT_USERNAME=admin
+QBITTORRENT_PASSWORD=...
+NZBGET_URL=http://192.168.10.21:6789
+NZBGET_USERNAME=nzbget
+NZBGET_PASSWORD=...
 ```
 
-A service is configured only when **both** its variables are set; setting just one is
-treated as "not configured" rather than as an error. Each configured service gets a
+A service is configured only when **all** its variables are set; setting just some of
+them is treated as "not configured" rather than as an error. Each configured service gets a
 single instance named `default`. If no service ends up configured at all, startup fails
 with a message listing the variables it looked for.
 
@@ -172,12 +187,15 @@ sonarr_search_series{query: "Severance", instance: "anime"}
 
 Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
 
-- Every instance needs a `name`, a `url` and an `apiKey`.
+- Every instance needs a `name`, a `url` and its credential: an `apiKey` for the \*arr
+  services and Bazarr, or a `username` and `password` for `qbittorrent` and `nzbget`.
+  Supplying the wrong kind is an error, not a silent fallback.
 - Instance names must be unique within a service, and at most one may be `default`.
 - With several instances and no `default`, a tool call that omits `instance` fails with a
   message listing the valid names — it does not silently pick the first one.
-- Only `sonarr`, `radarr`, `prowlarr` and `bazarr` are accepted; anything else is rejected
-  rather than ignored, so a typo like `sonar:` is caught immediately.
+- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent` and `nzbget` are accepted;
+  anything else is rejected rather than ignored, so a typo like `sonar:` is caught
+  immediately.
 
 > An unset (or empty) `${VAR}` is a startup error, never a silent empty value — an empty
 > API key would otherwise surface much later as a confusing 401.
@@ -454,8 +472,10 @@ ARR-MCP covers the \*arr-named applications that share the common \*arr API cont
 same versioned `/api` shape, the same API-key header, the same `/system/status` and health
 endpoints. That shared contract is the whole reason the project is cheap to extend — a
 service is described by a `ServiceSpec` rather than a bespoke client, so it inherits the
-transport, the instance registry and the permission model for free. Applications outside
-that contract each cost a complete client instead, which is where the line is drawn.
+transport, the instance registry and the permission model for free. The two download
+clients are the deliberate exceptions: each needed exactly one extra auth scheme on that
+shared transport, not a client of its own. Anything that would need more than that is
+where the line is drawn.
 
 ### Planned
 
@@ -469,26 +489,28 @@ approval workflows around a different data model. Supporting any of them means a
 client with its own auth handling, response shapes and tests, for a capability that
 overlaps heavily with what the \*arr tools already expose.
 
-### Not planned: download clients (NZBGet, SABnzbd, qBittorrent)
+### Download clients (qBittorrent, NZBGet)
 
-Download clients are deliberately out of scope, for two reasons.
+The \*arr queue tools already show what is downloading, and
+`sonarr_delete_queue_item` can drop a stuck download with `removeFromClient`.
+What they cannot do is anything the \*arr app did not initiate: add a torrent
+or NZB by hand, pause or reprioritise the client's queue, change categories
+and speed limits, or clean up the client's history. Those are the operations
+the download-client tools cover, so you can do from an MCP client what you
+would otherwise do in the client's own web UI.
 
-**You already have queue visibility.** `sonarr_queue` and `radarr_queue` report
-what is downloading, its status, size, time remaining and error message —
-because the \*arr apps track download client state themselves.
-`sonarr_delete_queue_item` can drop a stuck download and blocklist the release,
-with `removeFromClient` telling the download client to discard it too. That
-covers the operations people actually want, routed through the app that owns
-the decision.
+Neither client speaks the \*arr contract, so each got exactly one addition to
+the shared transport rather than a bespoke client: qBittorrent logs in with a
+username and password and replays the session cookie (`AuthSession`), and
+NZBGet's JSON-RPC rides on HTTP basic auth (`AuthBasic`). Everything else —
+the instance registry, permission tiers, `--check`, credential redaction — is
+inherited unchanged.
 
-**The cost is disproportionate.** NZBGet speaks JSON-RPC over HTTP Basic auth,
-SABnzbd uses a query-parameter `mode=` API, and qBittorrent needs cookie
-session auth. None of them fit the `ServiceSpec` model, so each would be a
-separate client with its own auth handling, response shapes and tests — a large
-amount of surface area to duplicate a capability the \*arr tools already expose.
+### Not planned: SABnzbd
 
-If you need to drive a download client directly, do it through its own UI or a
-dedicated MCP server.
+SABnzbd's query-parameter `mode=` API would need a third transport shape for
+an application NZBGet already covers in this stack. Open an issue if you run
+SABnzbd and want it.
 
 ## CLI
 
@@ -526,6 +548,10 @@ var BazarrSpec = ServiceSpec{
     Auth: AuthHeaderKey,
 }
 ```
+
+Three auth schemes exist: `AuthHeaderKey` (the \*arr apps and Bazarr), `AuthBasic`
+(NZBGet) and `AuthSession` (qBittorrent's form login, with the session cookie cached per
+instance and refreshed once on a 403).
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please): conventional commits on `main` accumulate into a version-bump PR, and merging it tags the release and publishes multi-arch images to GHCR. Images are Trivy-scanned **before** push, so a vulnerable tag is never publicly pullable.
 

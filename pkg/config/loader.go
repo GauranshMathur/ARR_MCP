@@ -48,7 +48,31 @@ const (
 
 // KnownServices lists the services this build can expose tools for. Config
 // referencing anything else is rejected rather than silently ignored.
-var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr"}
+var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr", "qbittorrent", "nzbget"}
+
+// CredentialKind says which secret fields a service authenticates with.
+type CredentialKind int
+
+// Supported credential kinds.
+const (
+	// CredentialAPIKey services take apiKey (or <SERVICE>_API_KEY).
+	CredentialAPIKey CredentialKind = iota
+	// CredentialUserPass services take username and password (or
+	// <SERVICE>_USERNAME and <SERVICE>_PASSWORD).
+	CredentialUserPass
+)
+
+// serviceCredentials lists the services that do not use an API key.
+var serviceCredentials = map[string]CredentialKind{
+	"qbittorrent": CredentialUserPass,
+	"nzbget":      CredentialUserPass,
+}
+
+// CredentialKindFor returns how service authenticates. Unknown services
+// default to an API key, matching the *arr contract.
+func CredentialKindFor(service string) CredentialKind {
+	return serviceCredentials[service]
+}
 
 // Permissions describes how mutating tools are treated.
 type Permissions struct {
@@ -121,21 +145,35 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
-// loadFromEnv builds one instance per service from <SERVICE>_URL/<SERVICE>_API_KEY,
-// covering the single-instance docker-compose quickstart with no config file.
+// loadFromEnv builds one instance per service from <SERVICE>_URL plus either
+// <SERVICE>_API_KEY or <SERVICE>_USERNAME/<SERVICE>_PASSWORD, covering the
+// single-instance docker-compose quickstart with no config file.
 func (c *Config) loadFromEnv() error {
 	for _, svc := range KnownServices {
 		prefix := strings.ToUpper(svc)
-		url := os.Getenv(prefix + "_URL")
-		key := os.Getenv(prefix + "_API_KEY")
-		if url == "" || key == "" {
+		inst := Instance{Name: "default", URL: os.Getenv(prefix + "_URL"), Default: true}
+		if inst.URL == "" {
 			continue
 		}
-		c.Services[svc] = []Instance{{Name: "default", URL: url, APIKey: key, Default: true}}
+		switch CredentialKindFor(svc) {
+		case CredentialUserPass:
+			inst.Username = os.Getenv(prefix + "_USERNAME")
+			inst.Password = os.Getenv(prefix + "_PASSWORD")
+			if inst.Username == "" || inst.Password == "" {
+				continue
+			}
+		default:
+			inst.APIKey = os.Getenv(prefix + "_API_KEY")
+			if inst.APIKey == "" {
+				continue
+			}
+		}
+		c.Services[svc] = []Instance{inst}
 	}
 	if len(c.Services) == 0 {
 		return fmt.Errorf("no configuration found: pass --config, or set <SERVICE>_URL and "+
-			"<SERVICE>_API_KEY for at least one of: %s", strings.Join(KnownServices, ", "))
+			"<SERVICE>_API_KEY (or <SERVICE>_USERNAME and <SERVICE>_PASSWORD) for at least one of: %s",
+			strings.Join(KnownServices, ", "))
 	}
 	return nil
 }
@@ -150,6 +188,12 @@ func (c *Config) expand() error {
 				return err
 			}
 			if inst.APIKey, err = expandEnv(fmt.Sprintf("%s.%s.apiKey", svc, inst.Name), inst.APIKey); err != nil {
+				return err
+			}
+			if inst.Username, err = expandEnv(fmt.Sprintf("%s.%s.username", svc, inst.Name), inst.Username); err != nil {
+				return err
+			}
+			if inst.Password, err = expandEnv(fmt.Sprintf("%s.%s.password", svc, inst.Name), inst.Password); err != nil {
 				return err
 			}
 		}
@@ -196,8 +240,8 @@ func (c *Config) validate() error {
 			if inst.URL == "" {
 				return fmt.Errorf("%s.%s: missing url", svc, inst.Name)
 			}
-			if inst.APIKey == "" {
-				return fmt.Errorf("%s.%s: missing apiKey", svc, inst.Name)
+			if err := validateCredentials(svc, inst); err != nil {
+				return err
 			}
 			if inst.Default {
 				defaults++
@@ -217,6 +261,32 @@ func (c *Config) validate() error {
 	if len(c.Services) == 0 {
 		return fmt.Errorf("no services configured; supported services: %s",
 			strings.Join(KnownServices, ", "))
+	}
+	return nil
+}
+
+// validateCredentials checks that inst carries the secrets its service
+// authenticates with, and none of the other kind. A key on a username/password
+// service would otherwise be silently ignored and fail later as a 401.
+func validateCredentials(svc string, inst *Instance) error {
+	switch CredentialKindFor(svc) {
+	case CredentialUserPass:
+		if inst.APIKey != "" {
+			return fmt.Errorf("%s.%s: %s authenticates with username and password, not apiKey", svc, inst.Name, svc)
+		}
+		if inst.Username == "" {
+			return fmt.Errorf("%s.%s: missing username", svc, inst.Name)
+		}
+		if inst.Password == "" {
+			return fmt.Errorf("%s.%s: missing password", svc, inst.Name)
+		}
+	default:
+		if inst.Username != "" || inst.Password != "" {
+			return fmt.Errorf("%s.%s: %s authenticates with apiKey, not username and password", svc, inst.Name, svc)
+		}
+		if inst.APIKey == "" {
+			return fmt.Errorf("%s.%s: missing apiKey", svc, inst.Name)
+		}
 	}
 	return nil
 }

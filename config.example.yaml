@@ -34,8 +34,10 @@ permissions:
   # client.
   fallback: deny
 
-# Supported services: sonarr, radarr, prowlarr, bazarr. Anything else is
-# rejected at startup rather than ignored, so a typo is caught immediately.
+# Supported services: sonarr, radarr, prowlarr, bazarr, qbittorrent, nzbget.
+# Anything else is rejected at startup rather than ignored, so a typo is caught
+# immediately. The *arr services take an apiKey; the download clients
+# (qbittorrent, nzbget) take a username and password instead.
 #
 # Instance names must be unique within a service and are advertised to the model
 # as a schema enum, so it picks from a closed set. At most one instance per
@@ -79,3 +81,18 @@ services:
     - name: movies
       url: http://192.168.10.17:6767
       apiKey: ${BAZARR_MOVIES_API_KEY}
+
+  # Download clients authenticate with a username and password rather than an
+  # API key. qBittorrent: Tools -> Options -> Web UI. NZBGet: Settings ->
+  # Security (ControlUsername / ControlPassword).
+  qbittorrent:
+    - name: main
+      url: http://192.168.10.20:8080
+      username: admin
+      password: ${QBITTORRENT_PASSWORD}
+
+  nzbget:
+    - name: main
+      url: http://192.168.10.21:6789
+      username: nzbget
+      password: ${NZBGET_PASSWORD}
