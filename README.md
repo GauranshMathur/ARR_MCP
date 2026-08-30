@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **215 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — what you would otherwise do by clicking through each web UI
+- **246 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -298,7 +298,7 @@ pointed at directly by Argo CD or `kubectl apply -k`.
 
 ## Tools
 
-Sonarr and Radarr are kept at parity: 48 of their tool names are common to both,
+Sonarr and Radarr are kept at parity: 62 of their tool names are common to both,
 and the rest differ only where the APIs genuinely do (seasons and episodes
 versus movies and collections).
 
@@ -308,7 +308,15 @@ against every configured indexer and reports why each release would be accepted
 or rejected, `*_grab_release` takes one anyway, and the `*_manual_import` pair
 previews and then imports files the automatic importer could not place.
 
-### Sonarr (60)
+Quality profiles and custom formats are addressed by name rather than by id:
+`*_create_quality_profile` starts from the instance's own template and takes
+quality names as `*_list_quality_definitions` reports them, and
+`*_update_quality_profile` scores custom formats by the names
+`*_list_custom_formats` returns. The configuration editors read the record
+before writing it, so a setting they do not model is left as it was rather than
+reset.
+
+### Sonarr (77)
 
 | Area | Tools | Access |
 |---|---|---|
@@ -316,8 +324,8 @@ previews and then imports files the automatic importer could not place.
 | Wanted | `sonarr_wanted_missing`, `sonarr_wanted_cutoff` | read |
 | Search & import | `sonarr_list_releases`, `sonarr_manual_import_preview` | read |
 | Files | `sonarr_list_episode_files`, `sonarr_rename_preview` | read |
-| Profiles | `sonarr_list_quality_profiles`, `sonarr_list_quality_definitions`, `sonarr_list_custom_formats`, `sonarr_list_delay_profiles`, `sonarr_list_release_profiles` | read |
-| Config | `sonarr_list_root_folders`, `sonarr_naming_config`, `sonarr_list_indexers`, `sonarr_list_download_clients`, `sonarr_list_import_lists`, `sonarr_list_notifications` | read |
+| Profiles | `sonarr_list_quality_profiles`, `sonarr_get_quality_profile`, `sonarr_list_quality_definitions`, `sonarr_list_custom_formats`, `sonarr_get_custom_format`, `sonarr_list_delay_profiles`, `sonarr_list_release_profiles` | read |
+| Config | `sonarr_list_root_folders`, `sonarr_naming_config`, `sonarr_media_management_config`, `sonarr_list_indexers`, `sonarr_list_download_clients`, `sonarr_list_import_lists`, `sonarr_list_notifications` | read |
 | Providers | `sonarr_provider_schemas`, `sonarr_get_provider` | read |
 | Tags | `sonarr_list_tags`, `sonarr_tag_details` | read |
 | Operations | `sonarr_queue`, `sonarr_queue_status`, `sonarr_history`, `sonarr_blocklist`, `sonarr_health`, `sonarr_disk_space`, `sonarr_system_status`, `sonarr_list_tasks`, `sonarr_list_updates` | read |
@@ -326,9 +334,11 @@ previews and then imports files the automatic importer could not place.
 | Files | `sonarr_rename_files`, `sonarr_update_files` | write |
 | Providers | `sonarr_add_provider`, `sonarr_update_provider`, `sonarr_test_provider` | write |
 | Automation | `sonarr_trigger_search`, `sonarr_refresh_series`, `sonarr_run_command` | write |
-| Deletion | `sonarr_delete_series`, `sonarr_delete_episode_files`, `sonarr_delete_queue_item`, `sonarr_delete_queue_items`, `sonarr_delete_blocklist_item`, `sonarr_delete_provider`, `sonarr_delete_tag` | destructive |
+| Profiles | `sonarr_create_quality_profile`, `sonarr_update_quality_profile`, `sonarr_create_custom_format`, `sonarr_update_custom_format`, `sonarr_create_release_profile`, `sonarr_update_release_profile`, `sonarr_update_delay_profile` | write |
+| Config | `sonarr_add_root_folder`, `sonarr_update_naming_config`, `sonarr_update_media_management_config` | write |
+| Deletion | `sonarr_delete_series`, `sonarr_delete_episode_files`, `sonarr_delete_queue_item`, `sonarr_delete_queue_items`, `sonarr_delete_blocklist_item`, `sonarr_delete_tag`, `sonarr_delete_quality_profile`, `sonarr_delete_custom_format`, `sonarr_delete_release_profile`, `sonarr_delete_root_folder`, `sonarr_delete_provider` | destructive |
 
-### Radarr (59)
+### Radarr (73)
 
 | Area | Tools | Access |
 |---|---|---|
@@ -336,8 +346,8 @@ previews and then imports files the automatic importer could not place.
 | Wanted | `radarr_wanted_missing`, `radarr_wanted_cutoff` | read |
 | Search & import | `radarr_list_releases`, `radarr_manual_import_preview` | read |
 | Files | `radarr_list_movie_files`, `radarr_rename_preview` | read |
-| Profiles | `radarr_list_quality_profiles`, `radarr_list_quality_definitions`, `radarr_list_custom_formats`, `radarr_list_delay_profiles`, `radarr_list_release_profiles` | read |
-| Config | `radarr_list_root_folders`, `radarr_naming_config`, `radarr_list_indexers`, `radarr_list_download_clients`, `radarr_list_import_lists`, `radarr_list_notifications` | read |
+| Profiles | `radarr_list_quality_profiles`, `radarr_get_quality_profile`, `radarr_list_quality_definitions`, `radarr_list_custom_formats`, `radarr_get_custom_format`, `radarr_list_delay_profiles`, `radarr_list_release_profiles` | read |
+| Config | `radarr_list_root_folders`, `radarr_naming_config`, `radarr_media_management_config`, `radarr_list_indexers`, `radarr_list_download_clients`, `radarr_list_import_lists`, `radarr_list_notifications` | read |
 | Providers | `radarr_provider_schemas`, `radarr_get_provider` | read |
 | Tags | `radarr_list_tags`, `radarr_tag_details` | read |
 | Operations | `radarr_queue`, `radarr_queue_status`, `radarr_history`, `radarr_blocklist`, `radarr_health`, `radarr_disk_space`, `radarr_system_status`, `radarr_list_tasks`, `radarr_list_updates` | read |
@@ -346,7 +356,9 @@ previews and then imports files the automatic importer could not place.
 | Files | `radarr_rename_files`, `radarr_update_files` | write |
 | Providers | `radarr_add_provider`, `radarr_update_provider`, `radarr_test_provider` | write |
 | Automation | `radarr_trigger_search`, `radarr_refresh_movies`, `radarr_run_command` | write |
-| Deletion | `radarr_delete_movie`, `radarr_delete_movie_files`, `radarr_delete_queue_item`, `radarr_delete_queue_items`, `radarr_delete_blocklist_item`, `radarr_delete_provider`, `radarr_delete_tag` | destructive |
+| Profiles | `radarr_create_quality_profile`, `radarr_update_quality_profile`, `radarr_create_custom_format`, `radarr_update_custom_format`, `radarr_update_delay_profile` | write |
+| Config | `radarr_add_root_folder`, `radarr_update_naming_config`, `radarr_update_media_management_config` | write |
+| Deletion | `radarr_delete_movie`, `radarr_delete_movie_files`, `radarr_delete_queue_item`, `radarr_delete_queue_items`, `radarr_delete_blocklist_item`, `radarr_delete_tag`, `radarr_delete_quality_profile`, `radarr_delete_custom_format`, `radarr_delete_root_folder`, `radarr_delete_provider` | destructive |
 
 ### Bazarr (33)
 

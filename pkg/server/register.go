@@ -29,6 +29,9 @@ func registerAll(s *Server) {
 
 	registerProviders(s, "sonarr", arr.SonarrSpec)
 	registerProviders(s, "radarr", arr.RadarrSpec)
+
+	registerProfiles(s, "sonarr", arr.SonarrSpec, profileOpts{noun: "series", releaseProfiles: true})
+	registerProfiles(s, "radarr", arr.RadarrSpec, profileOpts{noun: "movies"})
 }
 
 func registerSonarr(s *Server) {
