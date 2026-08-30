@@ -23,3 +23,17 @@ binding for any change here.
 - **Documentation**: All exported types and functions must have doc comments
 - **Error Messages**: Lowercase for error text, no trailing punctuation
 - **Handler Pattern**: Implement `api.Handler` interface for all MCP tools
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues on `GauranshMathur/ARR_MCP`, driven by the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
