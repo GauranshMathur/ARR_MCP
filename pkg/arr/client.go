@@ -174,7 +174,7 @@ func (c *Client) ensureSession(ctx context.Context, stale string, retry bool) (s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.loggedIn && !(retry && s.sid == stale) {
+	if s.loggedIn && (!retry || s.sid != stale) {
 		return s.sid, nil
 	}
 	sid, err := c.login(ctx)
@@ -245,7 +245,11 @@ func (c *Client) send(ctx context.Context, method, target string, payload []byte
 		req.Header.Set("Referer", c.baseURL)
 		req.Header.Set("Origin", c.baseURL)
 		if sid != "" {
-			req.AddCookie(&http.Cookie{Name: "SID", Value: sid})
+			// Set the header rather than building an http.Cookie: Secure,
+			// HttpOnly and SameSite are response attributes a server sets, and
+			// are never serialised on an outbound request cookie, so a Cookie
+			// value here only invites a false "insecure cookie" report.
+			req.Header.Set("Cookie", "SID="+sid)
 		}
 	}
 
