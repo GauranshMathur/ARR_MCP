@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.3.0...v1.4.0) (2026-08-30)
+
+
+### Features
+
+* **arr:** add quality profile, custom format and config management ([ea2c865](https://github.com/GauranshMathur/ARR_MCP/commit/ea2c86540314ae54d0be2cbb39e9e9fdfd7ab838))
+
 ## [1.3.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.2.1...v1.3.0) (2026-08-30)
 
 
