@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.1.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.4...v1.1.0) (2026-08-30)
+
+
+### Features
+
+* **arr:** add qBittorrent session auth and NZBGet connectivity ([fa5c6ed](https://github.com/GauranshMathur/ARR_MCP/commit/fa5c6ed4419da658cf23a95d478054dd97228764))
+* **arr:** add qBittorrent session auth and NZBGet connectivity ([ef1ca33](https://github.com/GauranshMathur/ARR_MCP/commit/ef1ca33f86a176a422d74a770b03267052653690))
+* **bazarr:** add manual subtitle search, profiles, blacklist and task tools ([9f5d4d7](https://github.com/GauranshMathur/ARR_MCP/commit/9f5d4d7b1032101c9d97af566584522361e1a646))
+* **bazarr:** add manual subtitle search, profiles, blacklist and task tools ([885c9c6](https://github.com/GauranshMathur/ARR_MCP/commit/885c9c687fb204a9fe4b318f4a4ba8a89b859ce5))
+* **nzbget:** add queue, history and download-control tools ([fa6c427](https://github.com/GauranshMathur/ARR_MCP/commit/fa6c427a37da9726ff542eb7571a0ee1f271c46b))
+* **nzbget:** add queue, history and download-control tools ([9d20c38](https://github.com/GauranshMathur/ARR_MCP/commit/9d20c38e12f8faf52dd2124c9bea608d9e3b7a85))
+* **prowlarr:** add indexer management, application sync and release grab ([e3d9a4b](https://github.com/GauranshMathur/ARR_MCP/commit/e3d9a4b1e877b8464c638fdf3c55418b57353432))
+* **prowlarr:** add indexer management, application sync and release grab ([8566510](https://github.com/GauranshMathur/ARR_MCP/commit/856651069c8c62c2db4695ec1a72afb6ffb74822))
+* **qbittorrent:** add torrent, category, tag and speed-limit tools ([c487c34](https://github.com/GauranshMathur/ARR_MCP/commit/c487c345b7546f7e10955cabadc2a8387e3dc066))
+* **qbittorrent:** add torrent, category, tag and speed-limit tools ([261f6da](https://github.com/GauranshMathur/ARR_MCP/commit/261f6daf7ba7a5020ca763bba243bf73557ce770))
+
+
+### Bug Fixes
+
+* **ci:** satisfy staticcheck, gosec and Trivy on the session auth changes ([a79a181](https://github.com/GauranshMathur/ARR_MCP/commit/a79a1814d1b283af5a8752f5700b5d021491ca6d))
+
+
+### Documentation
+
+* record the CI checks that go vet and gofmt do not cover ([3f35175](https://github.com/GauranshMathur/ARR_MCP/commit/3f35175328fd55ae353ff81ceaaf50a09375aaa0))
+
 ## [1.0.4](https://github.com/GauranshMathur/ARR_MCP/compare/v1.0.3...v1.0.4) (2026-08-16)
 
 
