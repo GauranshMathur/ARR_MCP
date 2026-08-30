@@ -23,6 +23,9 @@ func registerAll(s *Server) {
 
 	registerMedia(s, "sonarr", arr.SonarrSpec, mediaOpts{noun: "series"})
 	registerMedia(s, "radarr", arr.RadarrSpec, mediaOpts{noun: "movies"})
+
+	registerLibrary(s, "sonarr", arr.SonarrSpec, libraryOpts{noun: "series", episodes: true})
+	registerLibrary(s, "radarr", arr.RadarrSpec, libraryOpts{noun: "movies", collections: true})
 }
 
 func registerSonarr(s *Server) {
@@ -78,15 +81,22 @@ func registerSonarr(s *Server) {
 		description: "Add a TV series to a Sonarr library.",
 		access:      AccessWrite,
 	}, func(ctx context.Context, c *arr.Client, in AddSeriesArgs) (arr.Series, error) {
+		seasonFolder := true
+		if in.SeasonFolder != nil {
+			seasonFolder = *in.SeasonFolder
+		}
 		req := arr.AddSeriesRequest{
 			TVDBID:           in.TVDBID,
 			Title:            in.Title,
 			QualityProfileID: in.QualityProfileID,
 			RootFolderPath:   in.RootFolderPath,
 			Monitored:        true,
-			SeasonFolder:     true,
+			SeasonFolder:     &seasonFolder,
+			SeriesType:       in.SeriesType,
+			Tags:             in.Tags,
 		}
 		req.AddOptions.SearchForMissingEpisodes = in.SearchNow
+		req.AddOptions.Monitor = in.Monitor
 		return arr.SonarrAddSeries(ctx, c, req)
 	})
 
@@ -276,13 +286,22 @@ func registerRadarr(s *Server) {
 		description: "Add a movie to a Radarr library.",
 		access:      AccessWrite,
 	}, func(ctx context.Context, c *arr.Client, in AddMovieArgs) (arr.Movie, error) {
+		monitored := true
+		if in.Monitored != nil {
+			monitored = *in.Monitored
+		}
+		availability := in.MinimumAvailability
+		if availability == "" {
+			availability = "released"
+		}
 		req := arr.AddMovieRequest{
 			TMDBID:              in.TMDBID,
 			Title:               in.Title,
 			QualityProfileID:    in.QualityProfileID,
 			RootFolderPath:      in.RootFolderPath,
-			Monitored:           true,
-			MinimumAvailability: "released",
+			Monitored:           monitored,
+			MinimumAvailability: availability,
+			Tags:                in.Tags,
 		}
 		req.AddOptions.SearchForMovie = in.SearchNow
 		return arr.RadarrAddMovie(ctx, c, req)
