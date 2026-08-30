@@ -8,10 +8,15 @@ import (
 
 // Instance is a single configured endpoint for a service.
 type Instance struct {
-	Name    string `yaml:"name"`
-	URL     string `yaml:"url"`
-	APIKey  string `yaml:"apiKey"`
-	Default bool   `yaml:"default"`
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
+	// APIKey authenticates services that take a key header (Sonarr, Radarr,
+	// Prowlarr, Bazarr). Username and Password authenticate the download
+	// clients (qBittorrent, NZBGet). CredentialKindFor says which applies.
+	APIKey   string `yaml:"apiKey"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	Default  bool   `yaml:"default"`
 	// Permissions optionally overrides the global policy for this instance.
 	Permissions *Permissions `yaml:"permissions"`
 }

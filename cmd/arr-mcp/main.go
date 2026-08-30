@@ -19,10 +19,12 @@ import (
 
 // specs maps a service name to the API description used to reach it.
 var specs = map[string]arr.ServiceSpec{
-	"sonarr":   arr.SonarrSpec,
-	"radarr":   arr.RadarrSpec,
-	"prowlarr": arr.ProwlarrSpec,
-	"bazarr":   arr.BazarrSpec,
+	"sonarr":      arr.SonarrSpec,
+	"radarr":      arr.RadarrSpec,
+	"prowlarr":    arr.ProwlarrSpec,
+	"bazarr":      arr.BazarrSpec,
+	"qbittorrent": arr.QBittorrentSpec,
+	"nzbget":      arr.NZBGetSpec,
 }
 
 func main() {
@@ -115,7 +117,7 @@ func checkAll(cfg *config.Config, log *logger.Logger) int {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				client := arr.NewClient(inst.URL, spec, arr.Credentials{APIKey: inst.APIKey})
+				client := arr.NewClient(inst.URL, spec, server.InstanceCredentials(&inst))
 				err := client.Ping(ctx)
 
 				mu.Lock()

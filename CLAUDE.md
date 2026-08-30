@@ -22,7 +22,7 @@ binding for any change here.
 - **Imports**: Group standard library, then project imports with blank line separator
 - **Documentation**: All exported types and functions must have doc comments
 - **Error Messages**: Lowercase for error text, no trailing punctuation
-- **Handler Pattern**: Implement `api.Handler` interface for all MCP tools
+- **Tool Pattern**: Register every MCP tool through the generic `register[In, Out]` helper in `pkg/server/tools.go` (there is no handler interface); inputs embed `InstanceArg`, and `toolMeta.access` declares the tier
 
 ## Agent skills
 

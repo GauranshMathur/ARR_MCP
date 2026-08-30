@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,9 @@ const (
 	AuthBasic
 	// AuthNone sends no credentials.
 	AuthNone
+	// AuthSession logs in with username and password once, then replays the
+	// session cookie the service issued. qBittorrent's WebUI works this way.
+	AuthSession
 )
 
 // ServiceSpec describes how one service exposes its API. Keeping the base path
@@ -57,6 +61,13 @@ var (
 		Name: "bazarr", BasePath: "/api", StatusPath: "/system/status",
 		Auth: AuthHeaderKey,
 	}
+	// QBittorrentSpec describes qBittorrent's WebUI API v2, which issues a
+	// session cookie from a form login instead of accepting an API key.
+	QBittorrentSpec = ServiceSpec{Name: "qbittorrent", BasePath: "/api/v2", StatusPath: "/app/version", Auth: AuthSession}
+	// NZBGetSpec describes NZBGet's JSON-RPC endpoint. The base path is empty
+	// because every call goes to /jsonrpc, which doubles as the status path
+	// when suffixed with a method name.
+	NZBGetSpec = ServiceSpec{Name: "nzbget", BasePath: "", StatusPath: "/jsonrpc/version", Auth: AuthBasic}
 )
 
 // defaultTimeout bounds ordinary reads and fire-and-forget commands.
@@ -120,7 +131,8 @@ func (c *Client) resolve(path string, q Query) (string, error) {
 	return u.String(), nil
 }
 
-// authorize attaches credentials according to the service spec.
+// authorize attaches credentials according to the service spec. Session auth
+// is handled by transmit, because it needs a login round-trip first.
 func (c *Client) authorize(req *http.Request) {
 	switch c.spec.Auth {
 	case AuthHeaderKey:
@@ -131,8 +143,123 @@ func (c *Client) authorize(req *http.Request) {
 		req.Header.Set(header, c.creds.APIKey)
 	case AuthBasic:
 		req.SetBasicAuth(c.creds.Username, c.creds.Password)
-	case AuthNone:
+	case AuthNone, AuthSession:
 	}
+}
+
+// session is the cached login state for one instance. Sessions are cached per
+// instance rather than per Client because the server builds a fresh Client for
+// every tool call; without the cache each call would log in again.
+type session struct {
+	mu       sync.Mutex
+	sid      string
+	loggedIn bool
+}
+
+// sessions holds session state keyed by instance URL and username.
+var sessions sync.Map
+
+// session returns the cached login state for this client's instance.
+func (c *Client) session() *session {
+	key := c.baseURL + "\x00" + c.creds.Username
+	v, _ := sessions.LoadOrStore(key, &session{})
+	return v.(*session)
+}
+
+// ensureSession returns a session id, logging in if none is cached. When stale
+// names the id that was just rejected, it logs in again unless another caller
+// already replaced it, so concurrent 403s trigger one login rather than many.
+func (c *Client) ensureSession(ctx context.Context, stale string, retry bool) (string, error) {
+	s := c.session()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.loggedIn && !(retry && s.sid == stale) {
+		return s.sid, nil
+	}
+	sid, err := c.login(ctx)
+	if err != nil {
+		s.loggedIn = false
+		return "", err
+	}
+	s.sid, s.loggedIn = sid, true
+	return sid, nil
+}
+
+// formContentType is the body encoding qBittorrent expects for every POST.
+const formContentType = "application/x-www-form-urlencoded"
+
+// login performs the form login and returns the SID cookie. A service that
+// bypasses authentication for this client answers Ok. without a cookie, which
+// is accepted as an empty session.
+func (c *Client) login(ctx context.Context) (string, error) {
+	target, err := c.resolve("/auth/login", nil)
+	if err != nil {
+		return "", err
+	}
+	form := url.Values{"username": {c.creds.Username}, "password": {c.creds.Password}}
+	resp, err := c.send(ctx, http.MethodPost, target, []byte(form.Encode()), formContentType, "")
+	if err != nil {
+		return "", err
+	}
+	if resp.status >= 400 {
+		return "", fmt.Errorf("%s login returned %d: %s",
+			c.spec.Name, resp.status, c.redact(strings.TrimSpace(string(resp.body))))
+	}
+	if strings.TrimSpace(string(resp.body)) != "Ok." {
+		return "", fmt.Errorf("%s login failed: check username and password", c.spec.Name)
+	}
+	for _, ck := range resp.cookies {
+		if ck.Name == "SID" {
+			return ck.Value, nil
+		}
+	}
+	return "", nil
+}
+
+// response is what send returns before status handling.
+type response struct {
+	status  int
+	body    []byte
+	cookies []*http.Cookie
+}
+
+// send performs one HTTP exchange. sid, when non-empty, is replayed as the
+// session cookie; for session-authenticated services the Referer and Origin
+// headers are set because qBittorrent rejects requests without them.
+func (c *Client) send(ctx context.Context, method, target string, payload []byte, contentType, sid string) (*response, error) {
+	var body io.Reader
+	if payload != nil {
+		body = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	if err != nil {
+		return nil, fmt.Errorf("building %s request: %w", c.spec.Name, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", contentType)
+	}
+	c.authorize(req)
+	if c.spec.Auth == AuthSession {
+		req.Header.Set("Referer", c.baseURL)
+		req.Header.Set("Origin", c.baseURL)
+		if sid != "" {
+			req.AddCookie(&http.Cookie{Name: "SID", Value: sid})
+		}
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s request failed: %s", c.spec.Name, c.redact(err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s response: %w", c.spec.Name, err)
+	}
+	return &response{status: resp.StatusCode, body: respBody, cookies: resp.Cookies()}, nil
 }
 
 // minRedactable is the shortest credential worth removing from an error.
@@ -153,48 +280,60 @@ func (c *Client) redact(s string) string {
 	return s
 }
 
-// do performs a request and returns the response body.
+// do performs a request with an optional JSON body and returns the response body.
 func (c *Client) do(ctx context.Context, method, path string, body any, q Query) ([]byte, error) {
-	target, err := c.resolve(path, q)
-	if err != nil {
-		return nil, err
-	}
-
-	var payload io.Reader
+	var payload []byte
 	if body != nil {
 		encoded, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("encoding %s request body: %w", c.spec.Name, err)
 		}
-		payload = bytes.NewReader(encoded)
+		payload = encoded
 	}
+	return c.transmit(ctx, method, path, payload, "application/json", q)
+}
 
-	req, err := http.NewRequestWithContext(ctx, method, target, payload)
+// transmit resolves the path, attaches session state when the spec needs it,
+// and turns error statuses into errors. A session-authenticated request that
+// comes back 403 logs in again and is retried once, because qBittorrent
+// expires sessions silently.
+func (c *Client) transmit(ctx context.Context, method, path string, payload []byte, contentType string, q Query) ([]byte, error) {
+	target, err := c.resolve(path, q)
 	if err != nil {
-		return nil, fmt.Errorf("building %s request: %w", c.spec.Name, err)
+		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	c.authorize(req)
 
-	resp, err := c.http.Do(req)
+	var sid string
+	if c.spec.Auth == AuthSession {
+		if sid, err = c.ensureSession(ctx, "", false); err != nil {
+			return nil, err
+		}
+	}
+
+	resp, err := c.send(ctx, method, target, payload, contentType, sid)
 	if err != nil {
-		return nil, fmt.Errorf("%s request failed: %s", c.spec.Name, c.redact(err.Error()))
+		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading %s response: %w", c.spec.Name, err)
+	if resp.status == http.StatusForbidden && c.spec.Auth == AuthSession {
+		if sid, err = c.ensureSession(ctx, sid, true); err != nil {
+			return nil, err
+		}
+		if resp, err = c.send(ctx, method, target, payload, contentType, sid); err != nil {
+			return nil, err
+		}
 	}
 
-	if resp.StatusCode >= 400 {
+	if resp.status >= 400 {
 		return nil, fmt.Errorf("%s returned %d: %s",
-			c.spec.Name, resp.StatusCode, c.redact(strings.TrimSpace(string(respBody))))
+			c.spec.Name, resp.status, c.redact(strings.TrimSpace(string(resp.body))))
 	}
-	return respBody, nil
+	return resp.body, nil
+}
+
+// PostForm performs a POST with a form-encoded body, which is how qBittorrent
+// expresses every mutation.
+func (c *Client) PostForm(ctx context.Context, path string, form url.Values) ([]byte, error) {
+	return c.transmit(ctx, http.MethodPost, path, []byte(form.Encode()), formContentType, nil)
 }
 
 // Get performs a GET request with optional query parameters.

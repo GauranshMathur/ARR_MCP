@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/GauranshMathur/ARR_MCP/pkg/arr"
+	"github.com/GauranshMathur/ARR_MCP/pkg/config"
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -70,13 +71,20 @@ func register[In instanceSelector, Out any](
 			return nil, zero, err
 		}
 
-		client := arr.NewClient(inst.URL, spec, arr.Credentials{APIKey: inst.APIKey})
+		client := arr.NewClient(inst.URL, spec, InstanceCredentials(inst))
 		out, err := fn(ctx, client, in)
 		if err != nil {
 			return nil, zero, fmt.Errorf("%s (%s instance %q): %w", meta.name, service, inst.Name, err)
 		}
 		return nil, out, nil
 	})
+}
+
+// InstanceCredentials converts a configured instance's secrets into client
+// credentials. Config validation has already ensured only the fields the
+// service uses are set, so every field is passed through.
+func InstanceCredentials(inst *config.Instance) arr.Credentials {
+	return arr.Credentials{APIKey: inst.APIKey, Username: inst.Username, Password: inst.Password}
 }
 
 // --- tool input types ---
