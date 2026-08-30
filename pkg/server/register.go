@@ -399,50 +399,6 @@ func registerRadarr(s *Server) {
 	})
 }
 
-func registerProwlarr(s *Server) {
-	const svc = "prowlarr"
-	spec := arr.ProwlarrSpec
-
-	register(s, svc, spec, toolMeta{
-		name:        "prowlarr_list_indexers",
-		description: "List the indexers configured in Prowlarr.",
-		access:      AccessRead,
-	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (IndexerList, error) {
-		indexers, err := arr.ProwlarrListIndexers(ctx, c)
-		return IndexerList{Indexers: indexers, Count: len(indexers)}, err
-	})
-
-	register(s, svc, spec, toolMeta{
-		name:        "prowlarr_search",
-		description: "Search all Prowlarr indexers for releases matching a query.",
-		access:      AccessRead,
-	}, func(ctx context.Context, c *arr.Client, in ProwlarrSearchArgs) (ReleaseList, error) {
-		limit := in.Limit
-		if limit <= 0 {
-			limit = 25
-		}
-		releases, err := arr.ProwlarrSearch(ctx, c, in.Query, in.Categories, limit)
-		return ReleaseList{Releases: releases, Count: len(releases)}, err
-	})
-
-	register(s, svc, spec, toolMeta{
-		name:        "prowlarr_system_status",
-		description: "Report version and health information for a Prowlarr instance.",
-		access:      AccessRead,
-	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (arr.SystemStatus, error) {
-		return arr.GetSystemStatus(ctx, c)
-	})
-
-	register(s, svc, spec, toolMeta{
-		name:        "prowlarr_indexer_stats",
-		description: "Report query, grab and failure counts per Prowlarr indexer. Use to find failing indexers.",
-		access:      AccessRead,
-	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (IndexerStatList, error) {
-		stats, err := arr.ProwlarrIndexerStats(ctx, c)
-		return IndexerStatList{Stats: stats}, err
-	})
-}
-
 // registerOperations adds the operational tools every *arr service shares.
 // Sonarr, Radarr and Prowlarr expose the same /health, /history and /command
 // endpoints, so these are written once and registered per service.
