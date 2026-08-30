@@ -20,11 +20,15 @@ type qbitFake struct {
 	lastHdr    http.Header
 	lastBody   string
 	lastCT     string
+	lastQuery  url.Values
 	paths      []string
 	sid        string
 	loginBody  string
 	issueSID   bool
 	requireSID bool
+	// responses maps a request path to the body served for it; paths not
+	// listed answer with a version string, which is what app/version returns.
+	responses map[string]string
 }
 
 func fakeQBit(t *testing.T) *qbitFake {
@@ -46,6 +50,7 @@ func fakeQBit(t *testing.T) *qbitFake {
 		}
 		f.lastHdr = r.Header.Clone()
 		f.lastCT = r.Header.Get("Content-Type")
+		f.lastQuery = r.URL.Query()
 		_ = r.ParseForm()
 		f.lastBody = r.PostForm.Encode()
 		if f.requireSID {
@@ -55,6 +60,10 @@ func fakeQBit(t *testing.T) *qbitFake {
 				_, _ = w.Write([]byte("Forbidden"))
 				return
 			}
+		}
+		if body, ok := f.responses[r.URL.Path]; ok {
+			_, _ = w.Write([]byte(body))
+			return
 		}
 		_, _ = w.Write([]byte("v5.1.2"))
 	}))
