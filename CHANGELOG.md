@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.2.1...v1.3.0) (2026-08-30)
+
+
+### Features
+
+* **arr:** add provider management for indexers, clients and notifications ([191481d](https://github.com/GauranshMathur/ARR_MCP/commit/191481d1d5eaa44ed7a40f3e3565d649ae386274))
+
 ## [1.2.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.2.0...v1.2.1) (2026-08-30)
 
 
