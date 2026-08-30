@@ -26,6 +26,9 @@ func registerAll(s *Server) {
 
 	registerLibrary(s, "sonarr", arr.SonarrSpec, libraryOpts{noun: "series", episodes: true})
 	registerLibrary(s, "radarr", arr.RadarrSpec, libraryOpts{noun: "movies", collections: true})
+
+	registerProviders(s, "sonarr", arr.SonarrSpec)
+	registerProviders(s, "radarr", arr.RadarrSpec)
 }
 
 func registerSonarr(s *Server) {
