@@ -297,6 +297,22 @@ func (c *Client) do(ctx context.Context, method, path string, body any, q Query)
 	return c.transmit(ctx, method, path, payload, "application/json", q)
 }
 
+// StatusError is returned when a service answers with an error status. It
+// carries the status so callers can branch on it with errors.As, rather than
+// matching on the message text -- a rewording there would otherwise silently
+// turn a rejected provider test into a transport failure.
+type StatusError struct {
+	Service string
+	Status  int
+	// Body is the response body, already redacted.
+	Body string
+}
+
+// Error keeps the wording the client has always used for a failing status.
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s returned %d: %s", e.Service, e.Status, e.Body)
+}
+
 // transmit resolves the path, attaches session state when the spec needs it,
 // and turns error statuses into errors. A session-authenticated request that
 // comes back 403 logs in again and is retried once, because qBittorrent
@@ -328,8 +344,11 @@ func (c *Client) transmit(ctx context.Context, method, path string, payload []by
 	}
 
 	if resp.status >= 400 {
-		return nil, fmt.Errorf("%s returned %d: %s",
-			c.spec.Name, resp.status, c.redact(strings.TrimSpace(string(resp.body))))
+		return nil, &StatusError{
+			Service: c.spec.Name,
+			Status:  resp.status,
+			Body:    c.redact(strings.TrimSpace(string(resp.body))),
+		}
 	}
 	return resp.body, nil
 }

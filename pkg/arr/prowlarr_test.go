@@ -3,6 +3,8 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -502,5 +504,55 @@ func TestProwlarrUpdateIndexerNeverWritesTheMaskOverUntouchedSecrets(t *testing.
 		if !strings.Contains(body, secret) {
 			t.Errorf("PUT body dropped the untouched credential %q: %s", secret, body)
 		}
+	}
+}
+
+// A rejected test is recognised by the status, not by the shape of the message.
+func TestRejectedBodyReadsA400(t *testing.T) {
+	err := &StatusError{Service: "prowlarr", Status: 400, Body: `[{"errorMessage":"no such host"}]`}
+
+	body, rejected := rejectedBody(err)
+	if !rejected {
+		t.Fatal("a 400 must be reported as a rejection")
+	}
+	if body != `[{"errorMessage":"no such host"}]` {
+		t.Errorf("body = %q, want the response body", body)
+	}
+}
+
+// Matching on the message text mistakes an upstream body that happens to quote
+// another service's error for a rejection of this request. The status is the
+// only thing that actually answers the question.
+func TestRejectedBodyIgnoresAMarkerInsideTheBody(t *testing.T) {
+	err := &StatusError{
+		Service: "prowlarr",
+		Status:  500,
+		Body:    `upstream said: sonarr returned 400: bad request`,
+	}
+
+	if _, rejected := rejectedBody(err); rejected {
+		t.Error("a 500 was treated as a rejected test because its body quoted a 400")
+	}
+}
+
+// Callers wrap the client's error with their own context, so the status has to
+// survive unwrapping.
+func TestRejectedBodySeesThroughWrapping(t *testing.T) {
+	err := fmt.Errorf("testing indexer 7: %w",
+		&StatusError{Service: "prowlarr", Status: 400, Body: "nope"})
+
+	body, rejected := rejectedBody(err)
+	if !rejected {
+		t.Fatal("a wrapped 400 must still be reported as a rejection")
+	}
+	if body != "nope" {
+		t.Errorf("body = %q, want %q", body, "nope")
+	}
+}
+
+// A transport failure carries no status and is not an answer.
+func TestRejectedBodyRejectsNonStatusErrors(t *testing.T) {
+	if _, rejected := rejectedBody(errors.New("dial tcp: connection refused")); rejected {
+		t.Error("a transport error was treated as a rejected test")
 	}
 }

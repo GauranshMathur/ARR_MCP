@@ -3,7 +3,9 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 )
@@ -452,19 +454,18 @@ func ProwlarrDeleteIndexer(ctx context.Context, c *Client, id int) error {
 	return err
 }
 
-// rejectedMarker is how the shared client renders a 400. A rejected provider
-// test is an answer rather than a transport failure, and the client reports
-// status and body as one string, so the body is recovered from that text.
-const rejectedMarker = " returned 400: "
-
 // rejectedBody returns the response body of a 400, if err reports one.
+//
+// A rejected provider test is an answer rather than a transport failure, and
+// the status is the only thing that separates them. Reading it off the message
+// text instead would misread an upstream body that quotes another service's
+// 400, and would break silently the moment that wording changed.
 func rejectedBody(err error) (string, bool) {
-	message := err.Error()
-	at := strings.Index(message, rejectedMarker)
-	if at < 0 {
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != http.StatusBadRequest {
 		return "", false
 	}
-	return strings.TrimSpace(message[at+len(rejectedMarker):]), true
+	return se.Body, true
 }
 
 // parseValidationFailures reads the upstream validation array, falling back to

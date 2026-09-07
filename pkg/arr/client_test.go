@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -210,5 +211,76 @@ func TestRedactHidesPasswords(t *testing.T) {
 
 	if got := c.redact("auth failed for correct-horse-battery"); strings.Contains(got, "correct-horse-battery") {
 		t.Errorf("redact leaked the password: %q", got)
+	}
+}
+
+// Callers that need to branch on the status must not have to match on the
+// message text, which nothing stops a later change from rewording.
+func TestErrorStatusIsInspectable(t *testing.T) {
+	srv, _ := fakeService(t, http.StatusBadRequest, `[{"errorMessage":"no such host"}]`)
+	c := NewClient(srv.URL, SonarrSpec, Credentials{APIKey: "secret"})
+
+	_, err := c.Get(context.Background(), "/series")
+	if err == nil {
+		t.Fatal("expected an error for a 400 response")
+	}
+
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if se.Status != http.StatusBadRequest {
+		t.Errorf("Status = %d, want %d", se.Status, http.StatusBadRequest)
+	}
+	if se.Service != SonarrSpec.Name {
+		t.Errorf("Service = %q, want %q", se.Service, SonarrSpec.Name)
+	}
+	if se.Body != `[{"errorMessage":"no such host"}]` {
+		t.Errorf("Body = %q, want the response body", se.Body)
+	}
+}
+
+// Every failing status carries the type, not just the 400 the Prowlarr helpers
+// happen to care about.
+func TestErrorStatusIsInspectableForServerErrors(t *testing.T) {
+	srv, _ := fakeService(t, http.StatusInternalServerError, "boom")
+	c := NewClient(srv.URL, SonarrSpec, Credentials{APIKey: "secret"})
+
+	_, err := c.Get(context.Background(), "/series")
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if se.Status != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", se.Status, http.StatusInternalServerError)
+	}
+}
+
+// The body reaches the caller already redacted; a typed field must not become a
+// way to read back a credential the formatted message would have hidden.
+func TestStatusErrorBodyIsRedacted(t *testing.T) {
+	key := "0123456789abcdef0123456789abcdef"
+	srv, _ := fakeService(t, http.StatusBadRequest, "bad key "+key)
+	c := NewClient(srv.URL, SonarrSpec, Credentials{APIKey: key})
+
+	_, err := c.Get(context.Background(), "/series")
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if strings.Contains(se.Body, key) {
+		t.Errorf("Body leaked the API key: %q", se.Body)
+	}
+	if strings.Contains(err.Error(), key) {
+		t.Errorf("message leaked the API key: %q", err.Error())
+	}
+}
+
+// The wording is unchanged, so existing messages and their tests still hold.
+func TestStatusErrorMessageKeepsItsWording(t *testing.T) {
+	se := &StatusError{Service: "sonarr", Status: 404, Body: "not found"}
+
+	if got, want := se.Error(), "sonarr returned 404: not found"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
