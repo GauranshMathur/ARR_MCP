@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -55,10 +54,15 @@ var (
 	ErrReadOnly = errors.New("server is running in readonly mode")
 )
 
-// Confirmer asks the user to approve an action. Implementations return
-// ErrConfirmUnsupported when the connected client cannot prompt.
+// Confirmer mediates the approval exchange with the connected client.
+//
+// Approval spans two calls: Ask builds the request that puts the question to
+// the user, and Decision reports the answer once the client has retried the
+// call carrying it. Ask returns ErrConfirmUnsupported when the client cannot
+// prompt at all.
 type Confirmer interface {
-	Confirm(ctx context.Context, prompt string) (bool, error)
+	Decision() (approved, answered bool, err error)
+	Ask(prompt string) (*mcp.CallToolResult, error)
 }
 
 // Gate applies the configured permission policy to tool calls.
@@ -84,40 +88,52 @@ func (g Gate) needsConfirmation(a Access) bool {
 	return a == AccessWrite || a == AccessDestructive
 }
 
-// Authorize decides whether a tool call may proceed, prompting the user when
-// the policy requires it. A nil return means the call is allowed.
-func (g Gate) Authorize(ctx context.Context, c Confirmer, tool string, a Access) error {
+// Authorize decides whether a tool call may proceed. Three outcomes:
+//
+//   - (nil, nil)    the call is allowed
+//   - (res, nil)    the client must approve first; res carries the input request
+//   - (nil, err)    the call is refused
+func (g Gate) Authorize(c Confirmer, tool string, a Access) (*mcp.CallToolResult, error) {
 	if a == AccessRead {
-		return nil
+		return nil, nil
 	}
 
 	switch g.Perms.Mode {
 	case config.ModeReadOnly:
-		return fmt.Errorf("%w: refusing %s tool %s", ErrReadOnly, a, tool)
+		return nil, fmt.Errorf("%w: refusing %s tool %s", ErrReadOnly, a, tool)
 	case config.ModeFull:
-		return nil
+		return nil, nil
 	}
 
 	if !g.needsConfirmation(a) {
-		return nil
+		return nil, nil
 	}
 
-	approved, err := c.Confirm(ctx, fmt.Sprintf(
+	// A retry carries the answer to the question the first pass asked.
+	approved, answered, err := c.Decision()
+	if err != nil {
+		return nil, fmt.Errorf("confirming %s: %w", tool, err)
+	}
+	if answered {
+		if !approved {
+			return nil, fmt.Errorf("%w: %s", ErrDeclined, tool)
+		}
+		return nil, nil
+	}
+
+	res, err := c.Ask(fmt.Sprintf(
 		"Allow %s to run? This is a %s operation on your media stack.", tool, a))
 	if err != nil {
 		if errors.Is(err, ErrConfirmUnsupported) {
 			// Failing closed matters: a client without elicitation would
 			// otherwise silently turn confirm mode into full write access.
 			if g.Perms.Fallback == config.FallbackAllow {
-				return nil
+				return nil, nil
 			}
-			return fmt.Errorf("%w: cannot confirm %s tool %s; set permissions.fallback=allow "+
+			return nil, fmt.Errorf("%w: cannot confirm %s tool %s; set permissions.fallback=allow "+
 				"or permissions.mode=full to permit it", ErrConfirmUnsupported, a, tool)
 		}
-		return fmt.Errorf("confirming %s: %w", tool, err)
+		return nil, fmt.Errorf("confirming %s: %w", tool, err)
 	}
-	if !approved {
-		return fmt.Errorf("%w: %s", ErrDeclined, tool)
-	}
-	return nil
+	return res, nil
 }

@@ -67,8 +67,15 @@ func register[In instanceSelector, Out any](
 		if err != nil {
 			return nil, zero, err
 		}
-		if err := s.gateFor(inst).Authorize(ctx, sessionConfirmer{req.Session}, meta.name, meta.access); err != nil {
+		confirmer := sessionConfirmer{session: req.Session, params: req.Params}
+		gated, err := s.gateFor(inst).Authorize(confirmer, meta.name, meta.access)
+		if err != nil {
 			return nil, zero, err
+		}
+		if gated != nil {
+			// Approval is pending: the client fulfils the input request and
+			// retries, and the retry takes the Decision branch above.
+			return gated, zero, nil
 		}
 
 		client := arr.NewClient(inst.URL, spec, InstanceCredentials(inst))

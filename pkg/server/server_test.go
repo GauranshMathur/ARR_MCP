@@ -645,3 +645,82 @@ func TestTriggerSearchToolPostsACommand(t *testing.T) {
 		t.Errorf("upstream calls = %v, want one POST /api/v3/command", *paths)
 	}
 }
+
+// connectElicit wires an in-memory MCP client that supports elicitation, so the
+// confirmation round-trip is exercised over a real transport. The SDK validates
+// elicitation params on the client side, which a stubbed Confirmer cannot reach.
+func connectElicit(t *testing.T, cfg *config.Config, action string) (*mcp.ClientSession, *int) {
+	t.Helper()
+	ctx := context.Background()
+	prompts := 0
+
+	s := New(cfg, logger.New("error", "test"))
+	ct, st := mcp.NewInMemoryTransports()
+	if _, err := s.MCP().Connect(ctx, st, nil); err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0"}, &mcp.ClientOptions{
+		ElicitationHandler: func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			prompts++
+			return &mcp.ElicitResult{Action: action}, nil
+		},
+	})
+	cs, err := client.Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs, &prompts
+}
+
+// The confirmation must be a request the client actually accepts. Sending an
+// elicitation mode the protocol does not define fails the call before the user
+// is ever asked, which silently breaks every write tool.
+func TestConfirmModePromptsAndProceedsOnAccept(t *testing.T) {
+	srv, hits := fakeArr(t, `{}`)
+	cs, prompts := connectElicit(t, cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeConfirm, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}), "accept")
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_add_series",
+		Arguments: map[string]any{"tvdbId": 1, "qualityProfileId": 1, "rootFolderPath": "/tv"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool transport error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("expected the approved write to succeed, got: %s", contentText(res))
+	}
+	if *prompts != 1 {
+		t.Errorf("user was prompted %d times, want 1", *prompts)
+	}
+	if *hits == 0 {
+		t.Error("upstream was never contacted despite approval")
+	}
+}
+
+// Declining must still deny, and must not reach upstream.
+func TestConfirmModeDeniesOnDecline(t *testing.T) {
+	srv, hits := fakeArr(t, `{}`)
+	cs, prompts := connectElicit(t, cfgWith(map[string][]config.Instance{
+		"sonarr": {{Name: "main", URL: srv.URL, APIKey: "k", Default: true}},
+	}, config.Permissions{Mode: config.ModeConfirm, ConfirmScope: config.ScopeWrite, Fallback: config.FallbackDeny}), "decline")
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "sonarr_add_series",
+		Arguments: map[string]any{"tvdbId": 1, "qualityProfileId": 1, "rootFolderPath": "/tv"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("expected a declined write to be refused")
+	}
+	if *prompts != 1 {
+		t.Errorf("user was prompted %d times, want 1", *prompts)
+	}
+	if *hits != 0 {
+		t.Errorf("upstream was contacted %d times despite refusal", *hits)
+	}
+}
