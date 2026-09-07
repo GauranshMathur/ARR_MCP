@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.4.0...v1.4.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **server:** confirm writes over multi round-trip input requests ([2d91584](https://github.com/GauranshMathur/ARR_MCP/commit/2d915846d59e8c36dbc2011b807970c4c93339f4)), closes [#39](https://github.com/GauranshMathur/ARR_MCP/issues/39)
+
 ## [1.4.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.3.0...v1.4.0) (2026-08-30)
 
 
