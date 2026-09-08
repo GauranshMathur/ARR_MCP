@@ -3,6 +3,8 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -503,4 +505,35 @@ func TestProwlarrUpdateIndexerNeverWritesTheMaskOverUntouchedSecrets(t *testing.
 			t.Errorf("PUT body dropped the untouched credential %q: %s", secret, body)
 		}
 	}
+}
+
+// Telling a rejected test from a transport failure is a decision about the
+// response status, not about how the error happens to be worded: nothing stops
+// a later change rewording the client's message, and if that decided the split,
+// every failed indexer test would quietly become a transport error.
+func TestRejectedBodyClassifiesByStatusNotMessage(t *testing.T) {
+	t.Run("wrapped status error", func(t *testing.T) {
+		err := fmt.Errorf("testing indexer 15: %w",
+			&StatusError{Service: "prowlarr", Status: 400, Body: `[{"errorMessage":"nope"}]`})
+
+		body, ok := rejectedBody(err)
+		if !ok {
+			t.Fatal("a wrapped StatusError(400) was not read as a rejected test")
+		}
+		if body != `[{"errorMessage":"nope"}]` {
+			t.Errorf("body = %q, want the response body", body)
+		}
+	})
+
+	t.Run("error that only reads like one", func(t *testing.T) {
+		if _, ok := rejectedBody(errors.New("prowlarr returned 400: nope")); ok {
+			t.Error("a plain error was read as a rejected test")
+		}
+	})
+
+	t.Run("other error statuses", func(t *testing.T) {
+		if _, ok := rejectedBody(&StatusError{Service: "prowlarr", Status: 500, Body: "boom"}); ok {
+			t.Error("a 500 was read as a rejected test")
+		}
+	})
 }

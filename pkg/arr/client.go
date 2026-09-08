@@ -203,8 +203,13 @@ func (c *Client) login(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if resp.status >= 400 {
-		return "", fmt.Errorf("%s login returned %d: %s",
-			c.spec.Name, resp.status, c.redact(strings.TrimSpace(string(resp.body))))
+		// The subject is the login round-trip rather than the request, and
+		// saying so is what tells a user their credentials are the problem.
+		return "", &StatusError{
+			Service: c.spec.Name + " login",
+			Status:  resp.status,
+			Body:    c.redact(strings.TrimSpace(string(resp.body))),
+		}
 	}
 	if strings.TrimSpace(string(resp.body)) != "Ok." {
 		return "", fmt.Errorf("%s login failed: check username and password", c.spec.Name)
@@ -284,6 +289,25 @@ func (c *Client) redact(s string) string {
 	return s
 }
 
+// StatusError is returned when a service answers with an error status. It
+// carries the status so callers can act on it -- a provider test rejected with
+// 400 is the answer the caller wanted, a 500 is a failure -- without matching
+// on the message text, which nothing stops a later change from rewording.
+type StatusError struct {
+	// Service names what returned the status, as the message spells it.
+	Service string
+	// Status is the HTTP status code of the response.
+	Status int
+	// Body is the response body, trimmed and already redacted.
+	Body string
+}
+
+// Error renders the status exactly as the client always has, so adding the
+// type leaves every existing message unchanged.
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s returned %d: %s", e.Service, e.Status, e.Body)
+}
+
 // do performs a request with an optional JSON body and returns the response body.
 func (c *Client) do(ctx context.Context, method, path string, body any, q Query) ([]byte, error) {
 	var payload []byte
@@ -328,8 +352,11 @@ func (c *Client) transmit(ctx context.Context, method, path string, payload []by
 	}
 
 	if resp.status >= 400 {
-		return nil, fmt.Errorf("%s returned %d: %s",
-			c.spec.Name, resp.status, c.redact(strings.TrimSpace(string(resp.body))))
+		return nil, &StatusError{
+			Service: c.spec.Name,
+			Status:  resp.status,
+			Body:    c.redact(strings.TrimSpace(string(resp.body))),
+		}
 	}
 	return resp.body, nil
 }
