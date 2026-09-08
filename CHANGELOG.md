@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.4.1...v1.5.0) (2026-09-08)
+
+
+### Features
+
+* **arr:** return a typed status error instead of a formatted string ([2a0a219](https://github.com/GauranshMathur/ARR_MCP/commit/2a0a2196a8735f3742c9bd36a594ad80ed69b96d)), closes [#27](https://github.com/GauranshMathur/ARR_MCP/issues/27)
+
 ## [1.4.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.4.0...v1.4.1) (2026-09-07)
 
 
