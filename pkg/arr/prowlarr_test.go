@@ -537,3 +537,21 @@ func TestRejectedBodyClassifiesByStatusNotMessage(t *testing.T) {
 		}
 	})
 }
+
+// The string match this replaced was not merely fragile, it was already wrong:
+// it searched the whole message, so a genuine 500 that quoted an upstream 400
+// -- an error passed through verbatim -- was read as a rejected test, and a
+// transport failure was reported as a list of validation failures the service
+// never sent. Classifying on the status alone never reads the body, so the
+// shape cannot recur unless the body is consulted again.
+func TestRejectedBodyIgnoresAMarkerInsideTheBody(t *testing.T) {
+	err := &StatusError{
+		Service: "prowlarr",
+		Status:  500,
+		Body:    `upstream said: sonarr returned 400: bad request`,
+	}
+
+	if _, rejected := rejectedBody(err); rejected {
+		t.Error("a 500 was treated as a rejected test because its body quoted a 400")
+	}
+}
