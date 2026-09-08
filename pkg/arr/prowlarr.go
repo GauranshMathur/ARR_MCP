@@ -3,7 +3,9 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 )
@@ -452,19 +454,22 @@ func ProwlarrDeleteIndexer(ctx context.Context, c *Client, id int) error {
 	return err
 }
 
-// rejectedMarker is how the shared client renders a 400. A rejected provider
-// test is an answer rather than a transport failure, and the client reports
-// status and body as one string, so the body is recovered from that text.
-const rejectedMarker = " returned 400: "
-
-// rejectedBody returns the response body of a 400, if err reports one.
+// rejectedBody returns the response body when err reports a provider test the
+// service rejected, which is an answer the caller wanted rather than a
+// transport failure. The split is decided on the status the client recorded on
+// the error, so rewording a message cannot silently reclassify it.
 func rejectedBody(err error) (string, bool) {
-	message := err.Error()
-	at := strings.Index(message, rejectedMarker)
-	if at < 0 {
+	var status *StatusError
+	if !errors.As(err, &status) {
 		return "", false
 	}
-	return strings.TrimSpace(message[at+len(rejectedMarker):]), true
+	// Only 400. A 401 or a 404 means the request itself did not land, and
+	// reporting that as an unhealthy indexer would hide a credential or
+	// configuration problem behind a plausible-looking test result.
+	if status.Status != http.StatusBadRequest {
+		return "", false
+	}
+	return status.Body, true
 }
 
 // parseValidationFailures reads the upstream validation array, falling back to

@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -210,5 +211,73 @@ func TestRedactHidesPasswords(t *testing.T) {
 
 	if got := c.redact("auth failed for correct-horse-battery"); strings.Contains(got, "correct-horse-battery") {
 		t.Errorf("redact leaked the password: %q", got)
+	}
+}
+
+// The wording is what MCP clients already see, so introducing the type must
+// not reword anything: only the ability to read the status is new.
+func TestStatusErrorMessageKeepsExistingWording(t *testing.T) {
+	err := &StatusError{Service: "sonarr", Status: 401, Body: `{"message":"Unauthorized"}`}
+
+	if got, want := err.Error(), `sonarr returned 401: {"message":"Unauthorized"}`; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+// Callers that need to act on the status -- a rejected provider test is an
+// answer, a 500 is a failure -- must be able to read it without parsing prose.
+func TestClientReturnsStatusErrorForErrorStatuses(t *testing.T) {
+	srv, _ := fakeService(t, 400, "  [{\"errorMessage\":\"nope\"}]  ")
+	c := NewClient(srv.URL, SonarrSpec, Credentials{APIKey: "k"})
+
+	_, err := c.Get(context.Background(), "/series")
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if se.Status != 400 {
+		t.Errorf("Status = %d, want 400", se.Status)
+	}
+	if se.Service != "sonarr" {
+		t.Errorf("Service = %q, want sonarr", se.Service)
+	}
+	if se.Body != `[{"errorMessage":"nope"}]` {
+		t.Errorf("Body = %q, want the trimmed response body", se.Body)
+	}
+}
+
+// The body reaches callers as a field now as well as through the message, so
+// it has to be redacted before it is stored, not on the way to Error().
+func TestStatusErrorBodyIsRedacted(t *testing.T) {
+	srv, _ := fakeService(t, 500, "boom super-secret-key")
+	c := NewClient(srv.URL, SonarrSpec, Credentials{APIKey: "super-secret-key"})
+
+	_, err := c.Get(context.Background(), "/series")
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if strings.Contains(se.Body, "super-secret-key") {
+		t.Errorf("StatusError.Body leaks the API key: %q", se.Body)
+	}
+}
+
+// A failed login is an error status too, and reporting it as one keeps the
+// "login" wording that tells a user their credentials, not their request, are
+// the problem.
+func TestLoginFailureReportsStatus(t *testing.T) {
+	srv, _ := fakeService(t, 403, "Fails.")
+	c := NewClient(srv.URL, QBittorrentSpec, Credentials{Username: "u", Password: "pw"})
+
+	_, err := c.Get(context.Background(), "/torrents/info")
+	var se *StatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("error %v is not a *StatusError", err)
+	}
+	if se.Status != 403 {
+		t.Errorf("Status = %d, want 403", se.Status)
+	}
+	if !strings.Contains(se.Error(), "login") {
+		t.Errorf("error %q does not say the login failed", se)
 	}
 }
