@@ -65,3 +65,8 @@ data:
           url: http://nzbget.media.svc.cluster.local:6789
           username: nzbget
           password: ${NZBGET_PASSWORD}
+
+      # Maintainerr has no authentication, so it needs no secret.
+      maintainerr:
+        - name: main
+          url: http://maintainerr.media.svc.cluster.local:6246

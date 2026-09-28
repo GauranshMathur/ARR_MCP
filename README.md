@@ -1,11 +1,11 @@
 # ARR-MCP
 
-An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — including **multiple instances of each**.
+An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — including **multiple instances of each**.
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **246 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent and NZBGet — what you would otherwise do by clicking through each web UI
+- **260 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -114,6 +114,10 @@ into their web UI with:
 | qBittorrent | Tools → Options → **Web UI** → Authentication | 8080 |
 | NZBGet | Settings → **Security** → ControlUsername / ControlPassword | 6789 |
 
+Maintainerr (default port 6246) has no API authentication at all, so it takes only a
+`url`. Anyone who can reach its port has full control of it, so keep it off untrusted
+networks.
+
 Every one of these is a *full-access* credential for that application. ARR-MCP never
 needs more than one credential per instance, and the [permission model](#permissions) is
 what narrows down what the model can actually do with it.
@@ -136,7 +140,8 @@ environment variables entirely, it does not merge with them.
 ### Environment variables (one instance per service)
 
 Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` — or, for `QBITTORRENT` and `NZBGET`,
-`<SERVICE>_USERNAME` and `<SERVICE>_PASSWORD` — and run **without** `--config`:
+`<SERVICE>_USERNAME` and `<SERVICE>_PASSWORD`; `MAINTAINERR` needs only its URL — and
+run **without** `--config`:
 
 ```bash
 SONARR_URL=http://192.168.10.12:8989
@@ -153,6 +158,7 @@ QBITTORRENT_PASSWORD=...
 NZBGET_URL=http://192.168.10.21:6789
 NZBGET_USERNAME=nzbget
 NZBGET_PASSWORD=...
+MAINTAINERR_URL=http://192.168.10.25:6246
 ```
 
 A service is configured only when **all** its variables are set; setting just some of
@@ -188,12 +194,14 @@ sonarr_search_series{query: "Severance", instance: "anime"}
 Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
 
 - Every instance needs a `name`, a `url` and its credential: an `apiKey` for the \*arr
-  services and Bazarr, or a `username` and `password` for `qbittorrent` and `nzbget`.
-  Supplying the wrong kind is an error, not a silent fallback.
+  services and Bazarr, a `username` and `password` for `qbittorrent` and `nzbget`, and
+  nothing for `maintainerr`, which has no authentication. Supplying the wrong kind is an
+  error, not a silent fallback.
 - Instance names must be unique within a service, and at most one may be `default`.
 - With several instances and no `default`, a tool call that omits `instance` fails with a
   message listing the valid names — it does not silently pick the first one.
-- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent` and `nzbget` are accepted;
+- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget` and `maintainerr`
+  are accepted;
   anything else is rejected rather than ignored, so a typo like `sonar:` is caught
   immediately.
 
@@ -472,6 +480,27 @@ Usenet download client, spoken to over its JSON-RPC API with basic auth
 | `nzbget_delete_items` — to history by default; `final` discards permanently | destructive |
 | `nzbget_delete_history_items` — hides by default; `final` removes permanently | destructive |
 
+### Maintainerr (14)
+
+Rule-driven library cleanup. A rule group fills a collection; each item in it is acted
+on (usually deleted from disk through Sonarr or Radarr) `deleteAfterDays` after it
+entered. These tools let you see what is about to go and keep or delay it. Nothing here
+deletes media: see [Scope](#maintainerr) for what is left out.
+
+| Tool | Access |
+|---|---|
+| `maintainerr_system_status` | read |
+| `maintainerr_list_collections` — each collection's action and grace period | read |
+| `maintainerr_collection_media` — items waiting for the action, with their addDate | read |
+| `maintainerr_list_rules`, `maintainerr_get_rule` — notification webhooks are never returned | read |
+| `maintainerr_list_exclusions`, `maintainerr_media_status` | read |
+| `maintainerr_rule_execution_status`, `maintainerr_overlay_status` | read |
+| `maintainerr_execute_rules` — re-evaluates membership; does not run any action | write |
+| `maintainerr_add_exclusion` — one collection, or every rule group | write |
+| `maintainerr_postpone_deletion` — by N days, or restart the grace period | write |
+| `maintainerr_process_overlays` | write |
+| `maintainerr_remove_exclusion` — the item becomes deletable again | destructive |
+
 ### What responses contain
 
 Upstream payloads are far too large to return as they arrive — a single Sonarr
@@ -611,7 +640,16 @@ where the line is drawn.
 
 ### Planned
 
-Maintainerr, Cleanuparr and Notifiarr.
+Cleanuparr and Notifiarr.
+
+### Maintainerr
+
+Maintainerr is not \*arr-named, but it drives Sonarr and Radarr and serves a plain JSON
+`/api` with no authentication, so it needed no transport change: `AuthNone` already
+existed. The tools stop at keeping and delaying media. Left out on purpose: running
+collection handling (`/collections/handle`, which deletes due media immediately), editing
+or deleting rules and collections, and everything under `/api/settings`, which returns
+every stored credential in plaintext.
 
 ### Not planned: media servers and request managers (Jellyfin, Overseerr, Plex)
 
@@ -681,9 +719,9 @@ var BazarrSpec = ServiceSpec{
 }
 ```
 
-Three auth schemes exist: `AuthHeaderKey` (the \*arr apps and Bazarr), `AuthBasic`
-(NZBGet) and `AuthSession` (qBittorrent's form login, with the session cookie cached per
-instance and refreshed once on a 403).
+Four auth schemes exist: `AuthHeaderKey` (the \*arr apps and Bazarr), `AuthBasic`
+(NZBGet), `AuthSession` (qBittorrent's form login, with the session cookie cached per
+instance and refreshed once on a 403) and `AuthNone` (Maintainerr).
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please): conventional commits on `main` accumulate into a version-bump PR, and merging it tags the release and publishes multi-arch images to GHCR. Images are Trivy-scanned **before** push, so a vulnerable tag is never publicly pullable.
 

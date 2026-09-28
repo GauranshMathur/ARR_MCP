@@ -68,6 +68,9 @@ var (
 	// because every call goes to /jsonrpc, which doubles as the status path
 	// when suffixed with a method name.
 	NZBGetSpec = ServiceSpec{Name: "nzbget", BasePath: "", StatusPath: "/jsonrpc/version", Auth: AuthBasic}
+	// MaintainerrSpec describes Maintainerr, which has no API authentication:
+	// it answers every request, with or without a key.
+	MaintainerrSpec = ServiceSpec{Name: "maintainerr", BasePath: "/api", StatusPath: "/app/status", Auth: AuthNone}
 )
 
 // defaultTimeout bounds ordinary reads and fire-and-forget commands.

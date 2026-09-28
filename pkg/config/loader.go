@@ -48,7 +48,7 @@ const (
 
 // KnownServices lists the services this build can expose tools for. Config
 // referencing anything else is rejected rather than silently ignored.
-var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr", "qbittorrent", "nzbget"}
+var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr", "qbittorrent", "nzbget", "maintainerr"}
 
 // CredentialKind says which secret fields a service authenticates with.
 type CredentialKind int
@@ -60,12 +60,15 @@ const (
 	// CredentialUserPass services take username and password (or
 	// <SERVICE>_USERNAME and <SERVICE>_PASSWORD).
 	CredentialUserPass
+	// CredentialNone services take no credentials at all, only a url.
+	CredentialNone
 )
 
 // serviceCredentials lists the services that do not use an API key.
 var serviceCredentials = map[string]CredentialKind{
 	"qbittorrent": CredentialUserPass,
 	"nzbget":      CredentialUserPass,
+	"maintainerr": CredentialNone,
 }
 
 // CredentialKindFor returns how service authenticates. Unknown services
@@ -146,8 +149,9 @@ func Load(path string) (*Config, error) {
 }
 
 // loadFromEnv builds one instance per service from <SERVICE>_URL plus either
-// <SERVICE>_API_KEY or <SERVICE>_USERNAME/<SERVICE>_PASSWORD, covering the
-// single-instance docker-compose quickstart with no config file.
+// <SERVICE>_API_KEY or <SERVICE>_USERNAME/<SERVICE>_PASSWORD, or the url alone
+// for a service that takes no credentials, covering the single-instance
+// docker-compose quickstart with no config file.
 func (c *Config) loadFromEnv() error {
 	for _, svc := range KnownServices {
 		prefix := strings.ToUpper(svc)
@@ -162,6 +166,7 @@ func (c *Config) loadFromEnv() error {
 			if inst.Username == "" || inst.Password == "" {
 				continue
 			}
+		case CredentialNone:
 		default:
 			inst.APIKey = os.Getenv(prefix + "_API_KEY")
 			if inst.APIKey == "" {
@@ -270,6 +275,10 @@ func (c *Config) validate() error {
 // service would otherwise be silently ignored and fail later as a 401.
 func validateCredentials(svc string, inst *Instance) error {
 	switch CredentialKindFor(svc) {
+	case CredentialNone:
+		if inst.APIKey != "" || inst.Username != "" || inst.Password != "" {
+			return fmt.Errorf("%s.%s: %s takes no credentials; remove apiKey, username and password", svc, inst.Name, svc)
+		}
 	case CredentialUserPass:
 		if inst.APIKey != "" {
 			return fmt.Errorf("%s.%s: %s authenticates with username and password, not apiKey", svc, inst.Name, svc)
