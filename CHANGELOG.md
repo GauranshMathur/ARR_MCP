@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.5.0...v1.6.0) (2026-09-28)
+
+
+### Features
+
+* **maintainerr:** add Maintainerr as a supported service ([2346299](https://github.com/GauranshMathur/ARR_MCP/commit/2346299bcabeadb7fe8fc51f9661977d999878d5))
+
 ## [1.5.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.4.1...v1.5.0) (2026-09-08)
 
 
