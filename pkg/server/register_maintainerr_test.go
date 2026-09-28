@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -110,13 +113,39 @@ func TestMaintainerrRemoveExclusionIsDestructive(t *testing.T) {
 	t.Fatal("maintainerr_remove_exclusion not advertised")
 }
 
+// routedArr serves a fixed body per "METHOD /path", recording each request's
+// line and body. Maintainerr tools make several upstream calls per tool call,
+// which fakeArr's single body cannot answer.
+func routedArr(t *testing.T, routes map[string]string) (*httptest.Server, *[]string, *[]string) {
+	t.Helper()
+	var paths, bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + r.URL.Path
+		paths = append(paths, key)
+		sent, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(sent))
+		body, ok := routes[key]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &paths, &bodies
+}
+
 // Rule groups carry notification webhooks with their tokens; the tool result
 // is where a projection mistake would finally leak them.
 func TestMaintainerrGetRuleToolOmitsNotificationWebhooks(t *testing.T) {
-	srv, _ := fakeArr(t, `{"id":1,"name":"Movies","collectionId":1,"isActive":true,
-	  "dataType":"movie","rules":[],
-	  "notifications":[{"agent":"discord","options":{"webhookUrl":"https://discord.com/api/webhooks/1/leaked-token"}}],
-	  "collection":{"id":1,"arrAction":0,"deleteAfterDays":14}}`)
+	srv, _, _ := routedArr(t, map[string]string{
+		"GET /api/rules/1": `{"id":1,"name":"Movies","collectionId":1,"isActive":true,
+		  "dataType":"movie","rules":[{"id":96,"ruleJson":"{\"action\":4}","section":0}],
+		  "notifications":[{"agent":"discord","options":{"webhookUrl":"https://discord.com/api/webhooks/1/leaked-token"}}],
+		  "collection":{"id":1,"arrAction":0,"deleteAfterDays":14}}`,
+		"POST /api/rules/yaml/encode": `{"code":1,"result":"mediaType: MOVIES"}`,
+	})
 	cs := connect(t, maintainerrCfg(srv.URL, permsFull))
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -135,6 +164,9 @@ func TestMaintainerrGetRuleToolOmitsNotificationWebhooks(t *testing.T) {
 	}
 	if !strings.Contains(body, `"arrAction":"DELETE"`) {
 		t.Errorf("result does not name the arrAction: %s", body)
+	}
+	if !strings.Contains(body, `"rulesYaml":"mediaType: MOVIES"`) {
+		t.Errorf("result does not carry rulesYaml: %s", body)
 	}
 }
 

@@ -144,8 +144,9 @@ func TestMaintainerrRulesDropNotificationSecrets(t *testing.T) {
 	    "options":{"webhookUrl":"https://discord.com/api/webhooks/1/leaked-token"}}],
 	  "collection":{"id":1,"title":"Movies","arrAction":0,"deleteAfterDays":14}}`
 	c, _, _ := maintainerrRoutes(t, map[string]string{
-		"GET /api/rules":   "[" + rule + "]",
-		"GET /api/rules/1": rule,
+		"GET /api/rules":              "[" + rule + "]",
+		"GET /api/rules/1":            rule,
+		"POST /api/rules/yaml/encode": `{"code":1,"result":"rules: []"}`,
 	})
 
 	list, err := MaintainerrListRules(context.Background(), c)

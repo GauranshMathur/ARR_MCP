@@ -3,6 +3,7 @@ package arr
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -239,6 +240,7 @@ type MaintainerrRuleDetail struct {
 	ArrAction       string                     `json:"arrAction"`
 	DeleteAfterDays *int                       `json:"deleteAfterDays"`
 	Rules           []MaintainerrRuleCondition `json:"rules"`
+	RulesYAML       string                     `json:"rulesYaml,omitempty" jsonschema:"the conditions in Maintainerr's YAML, the format maintainerr_create_rule and maintainerr_update_rule take"`
 }
 
 // rawMaintainerrRule is the upstream rule group. It omits notifications on
@@ -290,6 +292,17 @@ func MaintainerrGetRule(ctx context.Context, c *Client, id int) (MaintainerrRule
 		out.ArrAction = maintainerrArrAction(r.Collection.ArrAction)
 		out.DeleteAfterDays = r.Collection.DeleteAfterDays
 	}
+	if len(r.Rules) > 0 {
+		rules := make([]json.RawMessage, 0, len(r.Rules))
+		for _, rule := range r.Rules {
+			rules = append(rules, json.RawMessage(rule.RuleJSON))
+		}
+		yaml, err := maintainerrEncodeRules(ctx, c, rules, r.DataType)
+		if err != nil {
+			return MaintainerrRuleDetail{}, fmt.Errorf("rendering rule group %d as YAML: %w", id, err)
+		}
+		out.RulesYAML = yaml
+	}
 	return out, nil
 }
 
@@ -321,22 +334,31 @@ type maintainerrReturnStatus struct {
 	Code    int    `json:"code"`
 	Result  string `json:"result"`
 	Message string `json:"message"`
+	// Skipped counts rules a YAML decode could not resolve.
+	Skipped int `json:"skipped"`
 }
 
-// maintainerrCheck turns a code-0 envelope into an error.
-func maintainerrCheck(body []byte, action string) error {
+// maintainerrDecodeStatus decodes Maintainerr's result envelope and turns a
+// code-0 answer into an error naming the action that was refused.
+func maintainerrDecodeStatus(body []byte, action string) (maintainerrReturnStatus, error) {
 	var st maintainerrReturnStatus
 	if err := unmarshal(body, &st); err != nil {
-		return err
+		return st, err
 	}
 	if st.Code == 1 {
-		return nil
+		return st, nil
 	}
 	reason := st.Result
 	if st.Message != "" {
 		reason += ": " + st.Message
 	}
-	return fmt.Errorf("maintainerr refused to %s: %s", action, reason)
+	return st, fmt.Errorf("maintainerr refused to %s: %s", action, reason)
+}
+
+// maintainerrCheck turns a code-0 envelope into an error.
+func maintainerrCheck(body []byte, action string) error {
+	_, err := maintainerrDecodeStatus(body, action)
+	return err
 }
 
 // MaintainerrAddExclusion excludes an item from one collection's rule group,
