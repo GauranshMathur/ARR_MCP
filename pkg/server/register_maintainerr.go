@@ -102,6 +102,36 @@ func registerMaintainerr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name:        "maintainerr_list_libraries",
+		description: "List the media server libraries a Maintainerr rule group can target, with the libraryId maintainerr_create_rule needs.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (MaintainerrLibraryList, error) {
+		libs, err := arr.MaintainerrListLibraries(ctx, c)
+		return MaintainerrLibraryList{Libraries: libs, Count: len(libs)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_list_arr_servers",
+		description: "List the Radarr and Sonarr servers Maintainerr acts through. A movie rule group " +
+			"needs a radarr id and a show rule group a sonarr id; ids repeat across the two kinds.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (MaintainerrArrServerList, error) {
+		servers, err := arr.MaintainerrListArrServers(ctx, c)
+		return MaintainerrArrServerList{Servers: servers, Count: len(servers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_list_rule_properties",
+		description: "List the properties Maintainerr rule conditions can compare, as the App.property " +
+			"names rulesYaml uses, with each one's value type and allowed comparisons. Filter by application " +
+			"to keep the list short. maintainerr_get_rule shows complete rulesYaml examples.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in RulePropertiesArgs) (MaintainerrRulePropertyList, error) {
+		props, err := arr.MaintainerrListRuleProperties(ctx, c, in.Application)
+		return MaintainerrRulePropertyList{Properties: props, Count: len(props)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name: "maintainerr_execute_rules",
 		description: "Re-evaluate Maintainerr rules now, for one rule group or every active one. " +
 			"This updates collection membership; it does not run any collection's action. " +

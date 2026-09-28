@@ -52,6 +52,12 @@ type CollectionIDArgs struct {
 	CollectionID int `json:"collectionId" jsonschema:"collection id from maintainerr_list_collections"`
 }
 
+// RulePropertiesArgs narrows maintainerr_list_rule_properties.
+type RulePropertiesArgs struct {
+	InstanceArg
+	Application string `json:"application,omitempty" jsonschema:"only this application, e.g. Radarr, Sonarr, Jellyfin, Seerr; omit for all"`
+}
+
 // --- maintainerr tool outputs ---
 
 // MaintainerrCollectionList wraps collection results.
@@ -83,4 +89,22 @@ type ExclusionAdded struct {
 	MediaServerID string `json:"mediaServerId"`
 	CollectionID  int    `json:"collectionId,omitempty" jsonschema:"absent for a global exclusion"`
 	Excluded      bool   `json:"excluded"`
+}
+
+// MaintainerrLibraryList wraps library results.
+type MaintainerrLibraryList struct {
+	Libraries []arr.MaintainerrLibrary `json:"libraries"`
+	Count     int                      `json:"count"`
+}
+
+// MaintainerrArrServerList wraps Radarr and Sonarr server results.
+type MaintainerrArrServerList struct {
+	Servers []arr.MaintainerrArrServer `json:"servers"`
+	Count   int                        `json:"count"`
+}
+
+// MaintainerrRulePropertyList wraps rule property results.
+type MaintainerrRulePropertyList struct {
+	Properties []arr.MaintainerrRuleProperty `json:"properties"`
+	Count      int                           `json:"count"`
 }

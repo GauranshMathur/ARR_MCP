@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Rules cross the MCP boundary only as Maintainerr's YAML. Its encode and
@@ -61,4 +62,116 @@ func maintainerrDecodeRules(ctx context.Context, c *Client, yaml, mediaType stri
 		return nil, fmt.Errorf("rulesYaml contains no rules")
 	}
 	return decoded.Rules, nil
+}
+
+// maintainerrRulePossibilities names Maintainerr's RulePossibility enum, the
+// comparisons a condition can make.
+var maintainerrRulePossibilities = []string{
+	"BIGGER", "SMALLER", "EQUALS", "NOT_EQUALS", "CONTAINS", "BEFORE", "AFTER",
+	"IN_LAST", "IN_NEXT", "NOT_CONTAINS", "CONTAINS_PARTIAL", "NOT_CONTAINS_PARTIAL",
+	"CONTAINS_ALL", "NOT_CONTAINS_ALL", "COUNT_EQUALS", "COUNT_NOT_EQUALS",
+	"COUNT_BIGGER", "COUNT_SMALLER", "EXISTS", "NOT_EXISTS",
+}
+
+// MaintainerrLibrary is a media server library a rule group can target.
+type MaintainerrLibrary struct {
+	ID    string `json:"id" jsonschema:"libraryId for maintainerr_create_rule"`
+	Title string `json:"title"`
+	Type  string `json:"type" jsonschema:"movie or show"`
+}
+
+// MaintainerrListLibraries lists the media server's libraries.
+func MaintainerrListLibraries(ctx context.Context, c *Client) ([]MaintainerrLibrary, error) {
+	return GetJSON[[]MaintainerrLibrary](ctx, c, "/media-server/libraries")
+}
+
+// MaintainerrArrServer is a Radarr or Sonarr server Maintainerr can act through.
+type MaintainerrArrServer struct {
+	ID         int    `json:"id" jsonschema:"arrServerId for maintainerr_create_rule; ids repeat across kinds"`
+	Kind       string `json:"kind" jsonschema:"radarr for movie libraries, sonarr for show libraries"`
+	ServerName string `json:"serverName"`
+	URL        string `json:"url"`
+}
+
+// rawMaintainerrArrServer decodes only what may be shown. The endpoint also
+// returns the server's apiKey; a field that is never decoded is never re-encoded.
+type rawMaintainerrArrServer struct {
+	ID         int    `json:"id"`
+	ServerName string `json:"serverName"`
+	URL        string `json:"url"`
+}
+
+// MaintainerrListArrServers lists Maintainerr's Radarr servers, then its Sonarr ones.
+func MaintainerrListArrServers(ctx context.Context, c *Client) ([]MaintainerrArrServer, error) {
+	var out []MaintainerrArrServer
+	for _, kind := range []string{"radarr", "sonarr"} {
+		raw, err := GetJSON[[]rawMaintainerrArrServer](ctx, c, "/settings/"+kind)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range raw {
+			out = append(out, MaintainerrArrServer{ID: r.ID, Kind: kind, ServerName: r.ServerName, URL: r.URL})
+		}
+	}
+	return out, nil
+}
+
+// MaintainerrRuleProperty is one value a rule condition can compare.
+type MaintainerrRuleProperty struct {
+	Name        string   `json:"name" jsonschema:"identifier for rulesYaml firstValue or lastValue, e.g. Radarr.addDate"`
+	HumanName   string   `json:"humanName"`
+	ValueType   string   `json:"valueType" jsonschema:"number, date, text, boolean, text list, ..."`
+	Comparisons []string `json:"comparisons" jsonschema:"actions allowed with this property"`
+	ShowTypes   []string `json:"showTypes,omitempty" jsonschema:"for show libraries, the levels the property applies to"`
+}
+
+type rawMaintainerrConstants struct {
+	Applications []struct {
+		Name  string `json:"name"`
+		Props []struct {
+			Name      string `json:"name"`
+			HumanName string `json:"humanName"`
+			Type      struct {
+				HumanName     string `json:"humanName"`
+				Possibilities []int  `json:"possibilities"`
+			} `json:"type"`
+			ShowType []string `json:"showType"`
+		} `json:"props"`
+	} `json:"applications"`
+}
+
+// MaintainerrListRuleProperties lists the properties rule conditions can use,
+// optionally for one application (case-insensitive), since the full catalog
+// runs to hundreds of entries.
+func MaintainerrListRuleProperties(ctx context.Context, c *Client, application string) ([]MaintainerrRuleProperty, error) {
+	raw, err := GetJSON[rawMaintainerrConstants](ctx, c, "/rules/constants")
+	if err != nil {
+		return nil, err
+	}
+	var (
+		out   []MaintainerrRuleProperty
+		names []string
+		found bool
+	)
+	for _, app := range raw.Applications {
+		names = append(names, app.Name)
+		if application != "" && !strings.EqualFold(app.Name, application) {
+			continue
+		}
+		found = true
+		for _, p := range app.Props {
+			comparisons := make([]string, 0, len(p.Type.Possibilities))
+			for _, v := range p.Type.Possibilities {
+				comparisons = append(comparisons, maintainerrEnumName(maintainerrRulePossibilities, v))
+			}
+			out = append(out, MaintainerrRuleProperty{
+				Name: app.Name + "." + p.Name, HumanName: p.HumanName, ValueType: p.Type.HumanName,
+				Comparisons: comparisons, ShowTypes: p.ShowType,
+			})
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("unknown application %q; known applications: %s", application, strings.Join(names, ", "))
+	}
+	return out, nil
 }

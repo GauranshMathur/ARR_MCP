@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -97,5 +98,70 @@ func TestMaintainerrDecodeRulesRejectsEmptyRuleSet(t *testing.T) {
 
 	if _, err := maintainerrDecodeRules(context.Background(), c, "rules: []", "movie"); err == nil {
 		t.Error("an empty rule set was accepted")
+	}
+}
+
+func TestMaintainerrListLibraries(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, map[string]string{
+		"GET /api/media-server/libraries": `[{"id":"f13","title":"Movies","type":"movie"}]`,
+	})
+
+	libs, err := MaintainerrListLibraries(context.Background(), c)
+	if err != nil || len(libs) != 1 || libs[0].ID != "f13" || libs[0].Type != "movie" {
+		t.Errorf("libraries = %+v, %v", libs, err)
+	}
+}
+
+// /settings/radarr and /settings/sonarr return each server's apiKey. Only the
+// id, name and url may be decoded.
+func TestMaintainerrListArrServersNeverCarriesAPIKeys(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, map[string]string{
+		"GET /api/settings/radarr": `[{"id":1,"serverName":"Radarr","url":"http://r:7878","apiKey":"leaked-radarr-key"}]`,
+		"GET /api/settings/sonarr": `[{"id":1,"serverName":"Sonarr","url":"http://s:8989","apiKey":"leaked-sonarr-key"},
+		                             {"id":2,"serverName":"Sonarr Anime","url":"http://s2:8989","apiKey":"x"}]`,
+	})
+
+	servers, err := MaintainerrListArrServers(context.Background(), c)
+	if err != nil {
+		t.Fatalf("MaintainerrListArrServers: %v", err)
+	}
+	encoded, _ := json.Marshal(servers)
+	if strings.Contains(string(encoded), "leaked") || strings.Contains(string(encoded), "apiKey") {
+		t.Fatalf("api keys reached the result: %s", encoded)
+	}
+	if len(servers) != 3 || servers[0].Kind != "radarr" || servers[2].Kind != "sonarr" || servers[2].ID != 2 {
+		t.Errorf("servers = %+v", servers)
+	}
+}
+
+func TestMaintainerrRulePropertiesNameComparisons(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, map[string]string{
+		"GET /api/rules/constants": `{"applications":[
+		  {"id":1,"name":"Radarr","props":[{"id":0,"name":"addDate","humanName":"Date added",
+		    "type":{"key":"1","possibilities":[5,6],"humanName":"date"}}]},
+		  {"id":2,"name":"Sonarr","props":[{"id":0,"name":"addDate","humanName":"Date added",
+		    "type":{"key":"1","possibilities":[5],"humanName":"date"},"showType":["show"]}]}]}`,
+	})
+	ctx := context.Background()
+
+	all, err := MaintainerrListRuleProperties(ctx, c, "")
+	if err != nil || len(all) != 2 {
+		t.Fatalf("all = %+v, %v", all, err)
+	}
+	p := all[0]
+	if p.Name != "Radarr.addDate" || p.ValueType != "date" || strings.Join(p.Comparisons, ",") != "BEFORE,AFTER" {
+		t.Errorf("property = %+v", p)
+	}
+	if strings.Join(all[1].ShowTypes, ",") != "show" {
+		t.Errorf("showTypes = %v", all[1].ShowTypes)
+	}
+
+	sonarr, err := MaintainerrListRuleProperties(ctx, c, "sonarr")
+	if err != nil || len(sonarr) != 1 || sonarr[0].Name != "Sonarr.addDate" {
+		t.Errorf("filtered = %+v, %v", sonarr, err)
+	}
+	if _, err := MaintainerrListRuleProperties(ctx, c, "Plexx"); err == nil ||
+		!strings.Contains(err.Error(), "Radarr, Sonarr") {
+		t.Errorf("unknown application error = %v, want the known names", err)
 	}
 }

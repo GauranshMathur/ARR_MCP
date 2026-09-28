@@ -31,14 +31,17 @@ var maintainerrArrActions = []string{
 	"CHANGE_QUALITY_PROFILE",
 }
 
-// maintainerrArrAction names an arrAction value, keeping unknown values visible
-// rather than guessing, since a newer Maintainerr may add actions.
-func maintainerrArrAction(v int) string {
-	if v >= 0 && v < len(maintainerrArrActions) {
-		return maintainerrArrActions[v]
+// maintainerrEnumName names a Maintainerr enum value by index, keeping unknown
+// values visible rather than guessing, since a newer Maintainerr may add some.
+func maintainerrEnumName(names []string, v int) string {
+	if v >= 0 && v < len(names) {
+		return names[v]
 	}
 	return fmt.Sprintf("UNKNOWN(%d)", v)
 }
+
+// maintainerrArrAction names an arrAction value.
+func maintainerrArrAction(v int) string { return maintainerrEnumName(maintainerrArrActions, v) }
 
 // MaintainerrStatus reports a Maintainerr instance's version.
 type MaintainerrStatus struct {

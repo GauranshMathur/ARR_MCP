@@ -23,6 +23,9 @@ var maintainerrReadTools = []string{
 	"maintainerr_rule_execution_status",
 	"maintainerr_overlay_status",
 	"maintainerr_media_status",
+	"maintainerr_list_libraries",
+	"maintainerr_list_arr_servers",
+	"maintainerr_list_rule_properties",
 }
 
 // maintainerrWriteTools change Maintainerr state without deleting anything.
