@@ -110,10 +110,71 @@ func TestCredentialKindFor(t *testing.T) {
 	cases := map[string]CredentialKind{
 		"sonarr": CredentialAPIKey, "radarr": CredentialAPIKey, "prowlarr": CredentialAPIKey,
 		"bazarr": CredentialAPIKey, "qbittorrent": CredentialUserPass, "nzbget": CredentialUserPass,
+		"maintainerr": CredentialNone,
 	}
 	for svc, want := range cases {
 		if got := CredentialKindFor(svc); got != want {
 			t.Errorf("CredentialKindFor(%q) = %v, want %v", svc, got, want)
 		}
+	}
+}
+
+// Maintainerr has no authentication at all, so a url alone is a complete
+// instance; demanding a key would make the service impossible to configure.
+func TestUnauthenticatedServicesNeedOnlyAURL(t *testing.T) {
+	p := writeCfg(t, `
+services:
+  maintainerr:
+    - name: main
+      url: http://m:6246
+`)
+
+	c, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if inst := c.Services["maintainerr"][0]; inst.URL != "http://m:6246" {
+		t.Errorf("instance = %+v, want url http://m:6246", inst)
+	}
+}
+
+// A credential on a service that takes none would be silently ignored, which
+// reads as protection the deployment does not have.
+func TestUnauthenticatedServicesRejectCredentials(t *testing.T) {
+	for field, line := range map[string]string{
+		"apiKey":   "apiKey: abc",
+		"username": "username: admin",
+		"password": "password: pw",
+	} {
+		t.Run(field, func(t *testing.T) {
+			p := writeCfg(t, `
+services:
+  maintainerr:
+    - name: main
+      url: http://m:6246
+      `+line+`
+`)
+
+			_, err := Load(p)
+			if err == nil || !strings.Contains(err.Error(), "maintainerr.main: maintainerr takes no credentials") {
+				t.Fatalf("Load error = %v, want credential rejection", err)
+			}
+		})
+	}
+}
+
+func TestEnvFallbackBuildsUnauthenticatedInstanceFromURL(t *testing.T) {
+	t.Setenv("MAINTAINERR_URL", "http://m:6246")
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	inst, err := c.Resolve("maintainerr", "")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if inst.Name != "default" || inst.URL != "http://m:6246" {
+		t.Errorf("instance = %+v, want default at http://m:6246", inst)
 	}
 }

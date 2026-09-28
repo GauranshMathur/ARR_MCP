@@ -16,6 +16,7 @@ func registerAll(s *Server) {
 	registerBazarr(s)
 	registerQBittorrent(s)
 	registerNZBGet(s)
+	registerMaintainerr(s)
 
 	registerOperations(s, "sonarr", arr.SonarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "radarr", arr.RadarrSpec, operationOpts{hasQueue: true})
