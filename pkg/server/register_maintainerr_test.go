@@ -32,6 +32,8 @@ var maintainerrReadTools = []string{
 // maintainerrWriteTools change Maintainerr state without deleting anything.
 var maintainerrWriteTools = []string{
 	"maintainerr_create_rule",
+	"maintainerr_update_rule",
+	"maintainerr_update_collection",
 	"maintainerr_execute_rules",
 	"maintainerr_add_exclusion",
 	"maintainerr_postpone_deletion",
@@ -41,6 +43,7 @@ var maintainerrWriteTools = []string{
 // maintainerrDestructiveTools make media eligible for deletion from disk.
 var maintainerrDestructiveTools = []string{
 	"maintainerr_remove_exclusion",
+	"maintainerr_set_deletion_policy",
 }
 
 // maintainerrCfg configures one Maintainerr instance against url. It carries

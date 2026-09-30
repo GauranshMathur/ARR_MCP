@@ -7,8 +7,8 @@ import (
 )
 
 // registerMaintainerr adds the Maintainerr tools. The surface stops short of
-// anything that deletes media now: collection handling, rule and collection
-// edits, and /api/settings, which returns every stored credential, are left out.
+// anything that deletes media now: collection handling and /api/settings,
+// which returns every stored credential, are left out.
 func registerMaintainerr(s *Server) {
 	const svc = "maintainerr"
 	spec := arr.MaintainerrSpec
@@ -151,6 +151,42 @@ func registerMaintainerr(s *Server) {
 			Name: in.Name, Description: in.Description, LibraryID: in.LibraryID,
 			ArrAction: in.ArrAction, DeleteAfterDays: in.DeleteAfterDays, ArrServerID: in.ArrServerID,
 			RulesYAML: in.RulesYAML, OverlayEnabled: in.OverlayEnabled,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_update_rule",
+		description: "Change a Maintainerr rule group's name, description, conditions (rulesYaml replaces " +
+			"all of them) or schedule. Every other setting is kept. To change the action, grace period or " +
+			"active state, use maintainerr_set_deletion_policy.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in UpdateRuleArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrUpdateRule(ctx, c, in.ID, arr.MaintainerrRulePatch{
+			Name: in.Name, Description: in.Description, RulesYAML: in.RulesYAML,
+			RuleHandlerCronSchedule: in.RuleHandlerCronSchedule,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "maintainerr_update_collection",
+		description: "Change a Maintainerr collection's overlay and visibility settings. Nothing here affects deletion.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in MaintainerrUpdateCollectionArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrUpdateCollection(ctx, c, in.CollectionID, arr.MaintainerrCollectionPatch{
+			OverlayEnabled: in.OverlayEnabled, VisibleOnHome: in.VisibleOnHome,
+			VisibleOnRecommended: in.VisibleOnRecommended,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_set_deletion_policy",
+		description: "Change what a Maintainerr collection does to its items (arrAction), after how many " +
+			"days, and whether it runs at all. A shorter grace period or a DELETE action applies to items " +
+			"already in the collection.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in DeletionPolicyArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrSetDeletionPolicy(ctx, c, in.CollectionID, arr.MaintainerrDeletionPolicy{
+			ArrAction: in.ArrAction, DeleteAfterDays: in.DeleteAfterDays, IsActive: in.IsActive,
 		})
 	})
 

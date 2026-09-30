@@ -493,3 +493,215 @@ func TestMaintainerrCreateRuleWrapsAReadBackFailure(t *testing.T) {
 		t.Errorf("error = %v, want a wrapped read-back failure", err)
 	}
 }
+
+// storedGroup is a rule group as GET /api/rules/{id} returns it: the settings
+// PUT reads from the top level (arrAction, the *arr links) sit in collection,
+// and every rule is a row whose ruleJson is a string.
+const storedGroup = `{"id":2,"name":"Shows","description":"d","libraryId":"lib-s","collectionId":5,
+  "isActive":true,"dataType":"show","useRules":true,"ruleHandlerCronSchedule":null,
+  "rules":[{"id":103,"ruleJson":"{\"action\":2,\"section\":0}","ruleGroupId":2,"section":0,"isActive":true}],
+  "notifications":[{"id":1,"agent":"discord","options":{"webhookUrl":"https://x/keep-me"}}],
+  "collection":{"id":5,"arrAction":3,"deleteAfterDays":14,"isActive":true,"overlayEnabled":true,
+    "sortTitle":"Zz","keepLogsForMonths":12,"sonarrSettingsId":2,"tagInArr":true,"listExclusions":true,
+    "visibleOnHome":true}}`
+
+func updateRoutes() map[string]string {
+	return map[string]string{
+		"GET /api/rules/collection/5": `{"id":2,"collectionId":5,"name":"Shows"}`,
+		"GET /api/rules/2":            storedGroup,
+		"PUT /api/rules":              `{"code":1,"result":"Success"}`,
+		"POST /api/rules/yaml/decode": `{"code":1,"result":"{\"rules\":[{\"action\":9,\"section\":0}]}"}`,
+		"POST /api/rules/yaml/encode": `{"code":1,"result":"rules: []"}`,
+	}
+}
+
+// sentPut returns the body of the one PUT /api/rules, decoded.
+func sentPut(t *testing.T, paths, bodies []string) map[string]any {
+	t.Helper()
+	for i, p := range paths {
+		if p == "PUT /api/rules" {
+			var m map[string]any
+			if err := json.Unmarshal([]byte(bodies[i]), &m); err != nil {
+				t.Fatalf("PUT body: %v", err)
+			}
+			return m
+		}
+	}
+	t.Fatalf("no PUT /api/rules in %v", paths)
+	return nil
+}
+
+// PUT /api/rules resets what it is not sent: arrAction to DELETE, the Sonarr
+// link to null, overlays off, log retention to 6 months. A rename must send
+// all of it back as it was.
+func TestMaintainerrUpdateRulePreservesEverythingItDoesNotChange(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, updateRoutes())
+	name := "TV"
+
+	if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &name}); err != nil {
+		t.Fatalf("MaintainerrUpdateRule: %v", err)
+	}
+	sent := sentPut(t, *paths, *bodies)
+	for k, want := range map[string]any{
+		"name": "TV", "description": "d", "arrAction": float64(3), "sonarrSettingsId": float64(2),
+		"tagInArr": true, "listExclusions": true, "isActive": true, "useRules": true,
+	} {
+		if sent[k] != want {
+			t.Errorf("%s = %v, want %v", k, sent[k], want)
+		}
+	}
+	col := sent["collection"].(map[string]any)
+	if col["overlayEnabled"] != true || col["sortTitle"] != "Zz" || col["keepLogsForMonths"] != float64(12) {
+		t.Errorf("collection = %v", col)
+	}
+	if !strings.Contains(fmtAny(sent["notifications"]), "keep-me") {
+		t.Error("notifications were not sent back; Maintainerr would drop them")
+	}
+	// Stored rules go back as rule objects, not as rows with a ruleJson string.
+	rules := sent["rules"].([]any)
+	if len(rules) != 1 || rules[0].(map[string]any)["action"] != float64(2) {
+		t.Errorf("rules = %v", rules)
+	}
+}
+
+func fmtAny(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func TestMaintainerrUpdateRuleReplacesRulesFromYAML(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, updateRoutes())
+	yaml := "rules: []"
+
+	if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{RulesYAML: &yaml}); err != nil {
+		t.Fatalf("MaintainerrUpdateRule: %v", err)
+	}
+	for i, p := range *paths {
+		if p == "POST /api/rules/yaml/decode" && !strings.Contains((*bodies)[i], `"mediaType":"show"`) {
+			t.Errorf("decode body = %s, want the group's dataType", (*bodies)[i])
+		}
+	}
+	rules := sentPut(t, *paths, *bodies)["rules"].([]any)
+	if len(rules) != 1 || rules[0].(map[string]any)["action"] != float64(9) {
+		t.Errorf("rules = %v", rules)
+	}
+}
+
+// A no-op PUT still resets the fields Maintainerr does not fall back on.
+func TestMaintainerrUpdatesWithNothingToChangeSendNothing(t *testing.T) {
+	ctx := context.Background()
+	c, paths, _ := maintainerrRoutes(t, updateRoutes())
+
+	if _, err := MaintainerrUpdateRule(ctx, c, 2, MaintainerrRulePatch{}); err == nil {
+		t.Error("empty rule patch accepted")
+	}
+	if _, err := MaintainerrUpdateCollection(ctx, c, 5, MaintainerrCollectionPatch{}); err == nil {
+		t.Error("empty collection patch accepted")
+	}
+	if _, err := MaintainerrSetDeletionPolicy(ctx, c, 5, MaintainerrDeletionPolicy{}); err == nil {
+		t.Error("empty policy accepted")
+	}
+	if len(*paths) != 0 {
+		t.Errorf("requests sent: %v", *paths)
+	}
+}
+
+// A stored rule that is not a JSON string cannot be sent back as a rule
+// object; writing anyway would corrupt the group.
+func TestMaintainerrUpdateRefusesUnreadableStoredRules(t *testing.T) {
+	routes := updateRoutes()
+	routes["GET /api/rules/2"] = strings.Replace(storedGroup,
+		`"ruleJson":"{\"action\":2,\"section\":0}"`, `"ruleJson":{"action":2}`, 1)
+	c, paths, _ := maintainerrRoutes(t, routes)
+	name := "TV"
+
+	if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &name}); err == nil {
+		t.Error("update proceeded with an unreadable stored rule")
+	}
+	for _, p := range *paths {
+		if p == "PUT /api/rules" {
+			t.Fatal("PUT sent")
+		}
+	}
+}
+
+func TestMaintainerrUpdateCollectionResolvesTheRuleGroup(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, updateRoutes())
+	off := false
+
+	if _, err := MaintainerrUpdateCollection(context.Background(), c, 5, MaintainerrCollectionPatch{OverlayEnabled: &off}); err != nil {
+		t.Fatalf("MaintainerrUpdateCollection: %v", err)
+	}
+	col := sentPut(t, *paths, *bodies)["collection"].(map[string]any)
+	if col["overlayEnabled"] != false || col["visibleOnHome"] != true {
+		t.Errorf("collection = %v", col)
+	}
+}
+
+// arrAction lives in two places; PUT reads the top-level one, so both change.
+func TestMaintainerrSetDeletionPolicyWritesTopLevelAndCollection(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, updateRoutes())
+	action, days, active := "DELETE", 0, false
+
+	_, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{
+		ArrAction: &action, DeleteAfterDays: &days, IsActive: &active,
+	})
+	if err != nil {
+		t.Fatalf("MaintainerrSetDeletionPolicy: %v", err)
+	}
+	sent := sentPut(t, *paths, *bodies)
+	col := sent["collection"].(map[string]any)
+	if sent["arrAction"] != float64(0) || col["arrAction"] != float64(0) ||
+		col["deleteAfterDays"] != float64(0) || sent["isActive"] != false || col["isActive"] != false {
+		t.Errorf("sent = %v", sent)
+	}
+}
+
+func TestMaintainerrSetDeletionPolicyValidates(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, updateRoutes())
+	bad, over := "PURGE", 36501
+
+	if _, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{ArrAction: &bad}); err == nil {
+		t.Error("unknown action accepted")
+	}
+	if _, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{DeleteAfterDays: &over}); err == nil {
+		t.Error("days over the maximum accepted")
+	}
+	if len(*paths) != 0 {
+		t.Errorf("requests sent: %v", *paths)
+	}
+}
+
+func TestMaintainerrUpdateCollectionNamesUnknownCollections(t *testing.T) {
+	routes := updateRoutes()
+	routes["GET /api/rules/collection/5"] = ``
+	c, _, _ := maintainerrRoutes(t, routes)
+	on := true
+
+	_, err := MaintainerrUpdateCollection(context.Background(), c, 5, MaintainerrCollectionPatch{OverlayEnabled: &on})
+	if err == nil || !strings.Contains(err.Error(), "no rule group for collection with id 5") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+// A failure reading the group back after a successful PUT must not look like
+// nothing happened: Maintainerr already holds the change. Removing the encode
+// route makes the read-back (MaintainerrGetRule) fail after the PUT succeeds,
+// since the stored group has a rule to render as YAML.
+func TestMaintainerrUpdateRuleWrapsAReadBackFailure(t *testing.T) {
+	routes := updateRoutes()
+	delete(routes, "POST /api/rules/yaml/encode")
+	c, paths, _ := maintainerrRoutes(t, routes)
+	name := "TV"
+
+	_, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &name})
+	if err == nil || !strings.Contains(err.Error(), "rule group 2 was updated but could not be read back") {
+		t.Errorf("error = %v, want a wrapped read-back failure", err)
+	}
+	puts := 0
+	for _, p := range *paths {
+		if p == "PUT /api/rules" {
+			puts++
+		}
+	}
+	if puts != 1 {
+		t.Errorf("PUT /api/rules sent %d times, want 1", puts)
+	}
+}

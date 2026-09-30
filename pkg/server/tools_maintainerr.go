@@ -79,6 +79,36 @@ type CreateRuleArgs struct {
 	OverlayEnabled  bool   `json:"overlayEnabled,omitempty" jsonschema:"show the deletion date on posters"`
 }
 
+// UpdateRuleArgs changes a rule group; omitted fields are left alone.
+type UpdateRuleArgs struct {
+	InstanceArg
+	ID                      int     `json:"id" jsonschema:"rule group id from maintainerr_list_rules"`
+	Name                    *string `json:"name,omitempty"`
+	Description             *string `json:"description,omitempty"`
+	RulesYAML               *string `json:"rulesYaml,omitempty" jsonschema:"replaces every condition; start from maintainerr_get_rule's rulesYaml"`
+	RuleHandlerCronSchedule *string `json:"ruleHandlerCronSchedule,omitempty" jsonschema:"cron expression; empty string returns to the global schedule"`
+}
+
+// MaintainerrUpdateCollectionArgs changes collection display settings. Named
+// with the Maintainerr prefix because UpdateCollectionArgs already names
+// radarr_update_collection's input.
+type MaintainerrUpdateCollectionArgs struct {
+	InstanceArg
+	CollectionID         int   `json:"collectionId" jsonschema:"collection id from maintainerr_list_collections"`
+	OverlayEnabled       *bool `json:"overlayEnabled,omitempty" jsonschema:"show the deletion date on posters"`
+	VisibleOnHome        *bool `json:"visibleOnHome,omitempty"`
+	VisibleOnRecommended *bool `json:"visibleOnRecommended,omitempty"`
+}
+
+// DeletionPolicyArgs changes when and whether a collection acts.
+type DeletionPolicyArgs struct {
+	InstanceArg
+	CollectionID    int     `json:"collectionId" jsonschema:"collection id from maintainerr_list_collections"`
+	ArrAction       *string `json:"arrAction,omitempty" jsonschema:"DELETE, UNMONITOR_DELETE_ALL, UNMONITOR_DELETE_EXISTING, UNMONITOR, DO_NOTHING, DELETE_SHOW_IF_EMPTY, UNMONITOR_SHOW_IF_EMPTY or CHANGE_QUALITY_PROFILE"`
+	DeleteAfterDays *int    `json:"deleteAfterDays,omitempty" jsonschema:"grace period in days, 0 to 36500; 0 acts on the next collection run"`
+	IsActive        *bool   `json:"isActive,omitempty" jsonschema:"false stops the rule group and its collection entirely"`
+}
+
 // --- maintainerr tool outputs ---
 
 // MaintainerrCollectionList wraps collection results.

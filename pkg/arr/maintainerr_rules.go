@@ -439,3 +439,194 @@ func maintainerrFindRule(ctx context.Context, c *Client, name, libraryID string,
 	}
 	return id, nil
 }
+
+// maintainerrHoisted are the settings PUT /api/rules reads from the top level
+// of its body, while GET /api/rules/{id} returns them inside collection. Left
+// unsent, Maintainerr resets them: arrAction to DELETE, the *arr links to null.
+var maintainerrHoisted = []string{
+	"arrAction", "listExclusions", "cleanupLeftoverFolders", "forceSeerr",
+	"tautulliWatchedPercentOverride", "radarrSettingsId", "sonarrSettingsId",
+	"sportarrSettingsId", "radarrQualityProfileId", "sonarrQualityProfileId",
+	"sportarrQualityProfileId", "tagInArr", "keepInMaintainerrOnly",
+}
+
+// maintainerrStoredRules turns stored rule rows back into rule objects. PUT
+// saves each rule as JSON.stringify(rule), so sending the rows would store the
+// rows themselves as rules.
+func maintainerrStoredRules(v any) ([]json.RawMessage, error) {
+	rows, _ := v.([]any)
+	out := make([]json.RawMessage, 0, len(rows))
+	for i, row := range rows {
+		m, _ := row.(map[string]any)
+		s, ok := m["ruleJson"].(string)
+		if !ok || !json.Valid([]byte(s)) {
+			return nil, fmt.Errorf("stored rule %d is not readable; nothing was changed", i)
+		}
+		out = append(out, json.RawMessage(s))
+	}
+	return out, nil
+}
+
+// maintainerrUpdateRule reads a rule group whole, lets edit change it, and
+// writes it back whole. Maintainerr has no partial update, and PUT resets
+// several fields it is not sent, so nothing here may send less than it read.
+func maintainerrUpdateRule(ctx context.Context, c *Client, id int, edit func(group, collection map[string]any) error) (MaintainerrRuleDetail, error) {
+	group, err := maintainerrGetOne[map[string]any](ctx, c, "/rules/"+itoa(id), "rule group", id)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	collection, ok := group["collection"].(map[string]any)
+	if !ok {
+		return MaintainerrRuleDetail{}, fmt.Errorf("rule group %d has no collection", id)
+	}
+	for _, k := range maintainerrHoisted {
+		if v, ok := collection[k]; ok {
+			group[k] = v
+		}
+	}
+	rules, err := maintainerrStoredRules(group["rules"])
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	group["rules"] = rules
+	if err := edit(group, collection); err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	body, err := c.WithTimeout(maintainerrSlowTimeout).Put(ctx, "/rules", group)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	if err := maintainerrCheck(body, "update the rule group"); err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	// From here Maintainerr has already reported success, so any failure to
+	// read the result back must say so: a live change exists even when this
+	// call cannot confirm it, and a caller must not retry a write that landed.
+	detail, err := MaintainerrGetRule(ctx, c, id)
+	if err != nil {
+		return MaintainerrRuleDetail{}, fmt.Errorf("rule group %d was updated but could not be read back: %w", id, err)
+	}
+	return detail, nil
+}
+
+// maintainerrRuleGroupForCollection finds the rule group that owns a
+// collection. Collection and rule group ids need not match.
+func maintainerrRuleGroupForCollection(ctx context.Context, c *Client, collectionID int) (int, error) {
+	g, err := maintainerrGetOne[struct {
+		ID int `json:"id"`
+	}](ctx, c, "/rules/collection/"+itoa(collectionID), "rule group for collection", collectionID)
+	return g.ID, err
+}
+
+// MaintainerrRulePatch lists rule group fields to change; nil leaves one alone.
+type MaintainerrRulePatch struct {
+	Name                    *string
+	Description             *string
+	RulesYAML               *string
+	RuleHandlerCronSchedule *string
+}
+
+// MaintainerrUpdateRule changes a rule group's name, description, conditions
+// or schedule. An empty schedule returns the group to the global one.
+func MaintainerrUpdateRule(ctx context.Context, c *Client, id int, p MaintainerrRulePatch) (MaintainerrRuleDetail, error) {
+	if p == (MaintainerrRulePatch{}) {
+		return MaintainerrRuleDetail{}, fmt.Errorf("nothing to change: set name, description, rulesYaml or ruleHandlerCronSchedule")
+	}
+	return maintainerrUpdateRule(ctx, c, id, func(group, _ map[string]any) error {
+		if p.Name != nil {
+			group["name"] = *p.Name
+		}
+		if p.Description != nil {
+			group["description"] = *p.Description
+		}
+		if p.RuleHandlerCronSchedule != nil {
+			if *p.RuleHandlerCronSchedule == "" {
+				group["ruleHandlerCronSchedule"] = nil
+			} else {
+				group["ruleHandlerCronSchedule"] = *p.RuleHandlerCronSchedule
+			}
+		}
+		if p.RulesYAML != nil {
+			dataType, _ := group["dataType"].(string)
+			rules, err := maintainerrDecodeRules(ctx, c, *p.RulesYAML, dataType)
+			if err != nil {
+				return err
+			}
+			group["rules"] = rules
+		}
+		return nil
+	})
+}
+
+// MaintainerrCollectionPatch lists collection display settings to change.
+type MaintainerrCollectionPatch struct {
+	OverlayEnabled       *bool
+	VisibleOnHome        *bool
+	VisibleOnRecommended *bool
+}
+
+// MaintainerrUpdateCollection changes settings that do not affect deletion.
+func MaintainerrUpdateCollection(ctx context.Context, c *Client, collectionID int, p MaintainerrCollectionPatch) (MaintainerrRuleDetail, error) {
+	if p == (MaintainerrCollectionPatch{}) {
+		return MaintainerrRuleDetail{}, fmt.Errorf("nothing to change: set overlayEnabled, visibleOnHome or visibleOnRecommended")
+	}
+	id, err := maintainerrRuleGroupForCollection(ctx, c, collectionID)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	return maintainerrUpdateRule(ctx, c, id, func(_, col map[string]any) error {
+		for k, v := range map[string]*bool{
+			"overlayEnabled": p.OverlayEnabled, "visibleOnHome": p.VisibleOnHome,
+			"visibleOnRecommended": p.VisibleOnRecommended,
+		} {
+			if v != nil {
+				col[k] = *v
+			}
+		}
+		return nil
+	})
+}
+
+// MaintainerrDeletionPolicy lists the settings that decide when and whether a
+// collection acts; nil leaves one alone.
+type MaintainerrDeletionPolicy struct {
+	ArrAction       *string
+	DeleteAfterDays *int
+	IsActive        *bool
+}
+
+// MaintainerrSetDeletionPolicy changes what a collection does to its items,
+// after how long, and whether it runs at all. arrAction and isActive exist at
+// both levels of the group, and PUT reads the top-level copies, so both change.
+func MaintainerrSetDeletionPolicy(ctx context.Context, c *Client, collectionID int, p MaintainerrDeletionPolicy) (MaintainerrRuleDetail, error) {
+	if p == (MaintainerrDeletionPolicy{}) {
+		return MaintainerrRuleDetail{}, fmt.Errorf("nothing to change: set arrAction, deleteAfterDays or isActive")
+	}
+	action := -1
+	if p.ArrAction != nil {
+		a, err := maintainerrArrActionIndex(*p.ArrAction)
+		if err != nil {
+			return MaintainerrRuleDetail{}, err
+		}
+		action = a
+	}
+	if p.DeleteAfterDays != nil && (*p.DeleteAfterDays < 0 || *p.DeleteAfterDays > maintainerrDeleteAfterMaxDays) {
+		return MaintainerrRuleDetail{}, fmt.Errorf("deleteAfterDays must be 0 to %d", maintainerrDeleteAfterMaxDays)
+	}
+	id, err := maintainerrRuleGroupForCollection(ctx, c, collectionID)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	return maintainerrUpdateRule(ctx, c, id, func(group, col map[string]any) error {
+		if action >= 0 {
+			group["arrAction"], col["arrAction"] = action, action
+		}
+		if p.DeleteAfterDays != nil {
+			col["deleteAfterDays"] = *p.DeleteAfterDays
+		}
+		if p.IsActive != nil {
+			group["isActive"], col["isActive"] = *p.IsActive, *p.IsActive
+		}
+		return nil
+	})
+}
