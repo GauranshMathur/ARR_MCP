@@ -638,3 +638,14 @@ func MaintainerrSetDeletionPolicy(ctx context.Context, c *Client, collectionID i
 		return nil
 	})
 }
+
+// MaintainerrDeleteRule deletes a rule group and its collection, including the
+// media server collection. It waits on the media server, so it runs on the
+// long timeout.
+func MaintainerrDeleteRule(ctx context.Context, c *Client, id int) error {
+	body, err := c.WithTimeout(maintainerrSlowTimeout).Delete(ctx, "/rules/"+itoa(id))
+	if err != nil {
+		return err
+	}
+	return maintainerrCheck(body, "delete the rule group")
+}

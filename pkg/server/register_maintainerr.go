@@ -192,6 +192,16 @@ func registerMaintainerr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "maintainerr_delete_rule",
+		description: "Delete a Maintainerr rule group and its collection, including the collection on the " +
+			"media server. Items in it are no longer scheduled; nothing is deleted from disk.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in IDArgs) (Deleted, error) {
+		err := arr.MaintainerrDeleteRule(ctx, c, in.ID)
+		return Deleted{ID: in.ID, Deleted: err == nil}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name: "maintainerr_execute_rules",
 		description: "Re-evaluate Maintainerr rules now, for one rule group or every active one. " +
 			"This updates collection membership; it does not run any collection's action. " +

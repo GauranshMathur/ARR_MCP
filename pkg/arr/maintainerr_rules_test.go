@@ -765,3 +765,21 @@ func TestMaintainerrUpdateRefusesGroupsWithNoReadableRulesField(t *testing.T) {
 		})
 	}
 }
+
+func TestMaintainerrDeleteRule(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, map[string]string{
+		"DELETE /api/rules/2": `{"code":1,"result":"Success"}`,
+		"DELETE /api/rules/3": `{"code":0,"result":"Delete Failed","message":"media server refused"}`,
+	})
+	ctx := context.Background()
+
+	if err := MaintainerrDeleteRule(ctx, c, 2); err != nil {
+		t.Errorf("delete 2: %v", err)
+	}
+	if err := MaintainerrDeleteRule(ctx, c, 3); err == nil || !strings.Contains(err.Error(), "media server refused") {
+		t.Errorf("delete 3 error = %v", err)
+	}
+	if (*paths)[0] != "DELETE /api/rules/2" {
+		t.Errorf("requests = %v", *paths)
+	}
+}

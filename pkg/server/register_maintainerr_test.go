@@ -44,6 +44,7 @@ var maintainerrWriteTools = []string{
 var maintainerrDestructiveTools = []string{
 	"maintainerr_remove_exclusion",
 	"maintainerr_set_deletion_policy",
+	"maintainerr_delete_rule",
 }
 
 // maintainerrCfg configures one Maintainerr instance against url. It carries
