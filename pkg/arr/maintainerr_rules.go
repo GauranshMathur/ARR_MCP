@@ -175,3 +175,81 @@ func MaintainerrListRuleProperties(ctx context.Context, c *Client, application s
 	}
 	return out, nil
 }
+
+// MaintainerrRuleCheck is one condition's outcome in a dry run.
+type MaintainerrRuleCheck struct {
+	FirstValueName  string `json:"firstValueName"`
+	FirstValue      any    `json:"firstValue"`
+	Action          string `json:"action"`
+	SecondValueName string `json:"secondValueName,omitempty"`
+	SecondValue     any    `json:"secondValue,omitempty"`
+	Operator        string `json:"operator,omitempty"`
+	Result          bool   `json:"result"`
+}
+
+// MaintainerrSectionCheck is one section's outcome in a dry run.
+type MaintainerrSectionCheck struct {
+	ID       int                    `json:"id"`
+	Operator string                 `json:"operator,omitempty"`
+	Result   bool                   `json:"result"`
+	Rules    []MaintainerrRuleCheck `json:"rules"`
+}
+
+// MaintainerrRuleTest reports whether a rule group would take one item.
+type MaintainerrRuleTest struct {
+	RuleGroupID   int                       `json:"ruleGroupId"`
+	MediaServerID string                    `json:"mediaServerId"`
+	Matched       bool                      `json:"matched" jsonschema:"true when the item would enter the collection"`
+	Sections      []MaintainerrSectionCheck `json:"sections"`
+}
+
+// MaintainerrTestRule dry-runs a saved rule group against one item. It
+// refreshes Maintainerr's caches and queries every service the rules use,
+// so it runs on the long timeout.
+func MaintainerrTestRule(ctx context.Context, c *Client, ruleGroupID int, mediaServerID string) (MaintainerrRuleTest, error) {
+	out := MaintainerrRuleTest{RuleGroupID: ruleGroupID, MediaServerID: mediaServerID}
+	if err := maintainerrValidateMediaID(mediaServerID); err != nil {
+		return out, err
+	}
+	body, err := c.WithTimeout(maintainerrSlowTimeout).Post(ctx, "/rules/test", struct {
+		RuleGroupID int    `json:"rulegroupId"`
+		MediaID     string `json:"mediaId"`
+	}{ruleGroupID, mediaServerID})
+	if err != nil {
+		return out, err
+	}
+	var raw struct {
+		Code   int             `json:"code"`
+		Result json.RawMessage `json:"result"`
+	}
+	if err := unmarshal(body, &raw); err != nil {
+		return out, err
+	}
+	if raw.Code != 1 {
+		var msg string
+		_ = json.Unmarshal(raw.Result, &msg)
+		return out, fmt.Errorf("maintainerr could not test rule group %d: %s", ruleGroupID, msg)
+	}
+	var stats []struct {
+		Result         bool `json:"result"`
+		SectionResults []struct {
+			ID          int                    `json:"id"`
+			Operator    string                 `json:"operator"`
+			Result      bool                   `json:"result"`
+			RuleResults []MaintainerrRuleCheck `json:"ruleResults"`
+		} `json:"sectionResults"`
+	}
+	if err := unmarshal(raw.Result, &stats); err != nil {
+		return out, err
+	}
+	if len(stats) == 0 {
+		return out, fmt.Errorf("maintainerr returned no result for %q", mediaServerID)
+	}
+	out.Matched = stats[0].Result
+	for _, s := range stats[0].SectionResults {
+		out.Sections = append(out.Sections, MaintainerrSectionCheck{
+			ID: s.ID, Operator: s.Operator, Result: s.Result, Rules: s.RuleResults,
+		})
+	}
+	return out, nil
+}

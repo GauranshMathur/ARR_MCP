@@ -165,3 +165,44 @@ func TestMaintainerrRulePropertiesNameComparisons(t *testing.T) {
 		t.Errorf("unknown application error = %v, want the known names", err)
 	}
 }
+
+func TestMaintainerrTestRuleReportsPerConditionResults(t *testing.T) {
+	c, _, bodies := maintainerrRoutes(t, map[string]string{
+		"POST /api/rules/test": `{"code":1,"result":[{"mediaServerId":"abc","result":true,
+		  "sectionResults":[{"id":0,"result":true,"ruleResults":[
+		    {"firstValueName":"Radarr.addDate","firstValue":"2026-01-01","action":"before",
+		     "secondValueName":"custom_days","secondValue":"2026-06-01","result":true}]}]}]}`,
+	})
+
+	res, err := MaintainerrTestRule(context.Background(), c, 1, "abc")
+	if err != nil {
+		t.Fatalf("MaintainerrTestRule: %v", err)
+	}
+	if (*bodies)[0] != `{"rulegroupId":1,"mediaId":"abc"}` {
+		t.Errorf("body = %s", (*bodies)[0])
+	}
+	if !res.Matched || len(res.Sections) != 1 || len(res.Sections[0].Rules) != 1 ||
+		res.Sections[0].Rules[0].FirstValueName != "Radarr.addDate" || !res.Sections[0].Rules[0].Result {
+		t.Errorf("result = %+v", res)
+	}
+}
+
+// A failed test answers code 0 with a message string where results would be.
+func TestMaintainerrTestRuleSurfacesFailures(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, map[string]string{
+		"POST /api/rules/test": `{"code":0,"result":"Rule group not found"}`,
+	})
+
+	if _, err := MaintainerrTestRule(context.Background(), c, 9, "abc"); err == nil ||
+		!strings.Contains(err.Error(), "Rule group not found") {
+		t.Errorf("error = %v", err)
+	}
+}
+
+func TestMaintainerrTestRuleRejectsPathLikeIDs(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, map[string]string{})
+
+	if _, err := MaintainerrTestRule(context.Background(), c, 1, "../settings"); err == nil || len(*paths) != 0 {
+		t.Errorf("error = %v, requests = %v", err, *paths)
+	}
+}

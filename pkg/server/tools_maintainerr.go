@@ -58,6 +58,13 @@ type RulePropertiesArgs struct {
 	Application string `json:"application,omitempty" jsonschema:"only this application, e.g. Radarr, Sonarr, Jellyfin, Seerr; omit for all"`
 }
 
+// TestRuleArgs dry-runs a rule group against one item.
+type TestRuleArgs struct {
+	InstanceArg
+	RuleGroupID   int    `json:"ruleGroupId" jsonschema:"rule group id from maintainerr_list_rules"`
+	MediaServerID string `json:"mediaServerId" jsonschema:"media server item id to test, e.g. from maintainerr_collection_media"`
+}
+
 // --- maintainerr tool outputs ---
 
 // MaintainerrCollectionList wraps collection results.

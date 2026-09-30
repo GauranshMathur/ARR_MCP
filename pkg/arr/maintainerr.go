@@ -479,13 +479,21 @@ type MaintainerrItemStatus struct {
 	ManuallyAddedTo []MaintainerrStatusEntry `json:"manuallyAddedTo"`
 }
 
+// maintainerrValidateMediaID rejects ids that would not be a single path
+// segment. A slash would let an id walk to another endpoint, such as
+// /api/settings, which returns every secret in plaintext.
+func maintainerrValidateMediaID(id string) error {
+	if strings.Contains(id, "/") || id == "" || id == ".." {
+		return fmt.Errorf("invalid mediaServerId %q: want a single media server item id", id)
+	}
+	return nil
+}
+
 // MaintainerrMediaStatus reports the exclusions and manual collections that
 // apply to a media item, including those inherited from its show or season.
 func MaintainerrMediaStatus(ctx context.Context, c *Client, mediaServerID string) (MaintainerrItemStatus, error) {
-	if strings.Contains(mediaServerID, "/") || mediaServerID == "" || mediaServerID == ".." {
-		// The id becomes a path segment. A slash would let it walk to another
-		// endpoint, such as /api/settings, which returns every secret in plaintext.
-		return MaintainerrItemStatus{}, fmt.Errorf("invalid mediaServerId %q: want a single media server item id", mediaServerID)
+	if err := maintainerrValidateMediaID(mediaServerID); err != nil {
+		return MaintainerrItemStatus{}, err
 	}
 	return GetJSON[MaintainerrItemStatus](ctx, c, "/media-server/meta/"+mediaServerID+"/maintainerr-status")
 }

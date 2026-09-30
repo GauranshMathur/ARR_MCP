@@ -132,6 +132,15 @@ func registerMaintainerr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "maintainerr_test_rule",
+		description: "Dry-run a saved Maintainerr rule group against one media item: whether it would " +
+			"enter the collection, and each condition's values and result. Changes nothing.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in TestRuleArgs) (arr.MaintainerrRuleTest, error) {
+		return arr.MaintainerrTestRule(ctx, c, in.RuleGroupID, in.MediaServerID)
+	})
+
+	register(s, svc, spec, toolMeta{
 		name: "maintainerr_execute_rules",
 		description: "Re-evaluate Maintainerr rules now, for one rule group or every active one. " +
 			"This updates collection membership; it does not run any collection's action. " +

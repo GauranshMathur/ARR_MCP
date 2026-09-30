@@ -26,6 +26,7 @@ var maintainerrReadTools = []string{
 	"maintainerr_list_libraries",
 	"maintainerr_list_arr_servers",
 	"maintainerr_list_rule_properties",
+	"maintainerr_test_rule",
 }
 
 // maintainerrWriteTools change Maintainerr state without deleting anything.
