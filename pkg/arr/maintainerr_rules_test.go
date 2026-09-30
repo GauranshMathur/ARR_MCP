@@ -3,6 +3,9 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -207,6 +210,15 @@ func TestMaintainerrTestRuleRejectsPathLikeIDs(t *testing.T) {
 	}
 }
 
+// maintainerrRuleListBefore and maintainerrRuleListAfter model the rule list
+// before and after a successful create: group 8 exists only afterward, so a
+// create is provably new only when it appears there and not before.
+const (
+	maintainerrRuleListBefore = `[{"id":3,"name":"Old unwatched","libraryId":"lib-m","collectionId":3}]`
+	maintainerrRuleListAfter  = `[{"id":3,"name":"Old unwatched","libraryId":"lib-m","collectionId":3},
+	                    {"id":8,"name":"Old unwatched","libraryId":"lib-m","collectionId":8}]`
+)
+
 // createRoutes answers every call a successful create makes. The rule list
 // holds an older group with the same name, which the create must not pick.
 func createRoutes() map[string]string {
@@ -216,8 +228,7 @@ func createRoutes() map[string]string {
 		"GET /api/settings/sonarr":        `[{"id":1,"serverName":"Sonarr","url":"http://s","apiKey":"k"},{"id":2,"serverName":"Anime","url":"http://s2","apiKey":"k"}]`,
 		"POST /api/rules/yaml/decode":     `{"code":1,"result":"{\"rules\":[{\"action\":5,\"section\":0}]}"}`,
 		"POST /api/rules":                 `{"code":1,"result":"Success"}`,
-		"GET /api/rules": `[{"id":3,"name":"Old unwatched","libraryId":"lib-m","collectionId":3},
-		                    {"id":8,"name":"Old unwatched","libraryId":"lib-m","collectionId":8}]`,
+		"GET /api/rules":                  maintainerrRuleListAfter,
 		"GET /api/rules/8": `{"id":8,"name":"Old unwatched","libraryId":"lib-m","collectionId":8,"dataType":"movie",
 		  "rules":[{"id":1,"ruleJson":"{\"action\":5}","section":0}],"collection":{"arrAction":0,"deleteAfterDays":30}}`,
 		"POST /api/rules/yaml/encode": `{"code":1,"result":"rules: []"}`,
@@ -231,14 +242,51 @@ func validNewRule() MaintainerrNewRule {
 	}
 }
 
+// maintainerrCreateServer serves routes, except GET /api/rules answers
+// before until a POST /api/rules is seen, then after. The static
+// maintainerrRoutes fake would answer GET /api/rules identically both times,
+// which cannot tell a genuinely new group from an older one with the same
+// name; this lets a create test prove which one MaintainerrCreateRule picks.
+func maintainerrCreateServer(t *testing.T, routes map[string]string, before, after string) (*Client, *[]string, *[]string) {
+	t.Helper()
+	var paths, bodies []string
+	posted := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + r.URL.Path
+		paths = append(paths, key)
+		sent, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(sent))
+		if key == "GET /api/rules" {
+			body := before
+			if posted {
+				body = after
+			}
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		body, ok := routes[key]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if key == "POST /api/rules" {
+			posted = true
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return NewClient(srv.URL, MaintainerrSpec, Credentials{}), &paths, &bodies
+}
+
 func TestMaintainerrCreateRuleSendsAnExplicitActiveGroup(t *testing.T) {
-	c, paths, bodies := maintainerrRoutes(t, createRoutes())
+	c, paths, bodies := maintainerrCreateServer(t, createRoutes(), maintainerrRuleListBefore, maintainerrRuleListAfter)
 
 	detail, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
 	if err != nil {
 		t.Fatalf("MaintainerrCreateRule: %v", err)
 	}
-	// Two groups share the name; the newest is the one just created.
+	// Two groups share the name; the newest -- the only one that did not
+	// exist before the create -- is the one just created.
 	if detail.ID != 8 {
 		t.Errorf("returned group %d, want 8", detail.ID)
 	}
@@ -270,15 +318,32 @@ func TestMaintainerrCreateRuleSendsAnExplicitActiveGroup(t *testing.T) {
 }
 
 func TestMaintainerrCreateRuleMapsShowServersToSonarr(t *testing.T) {
-	c, paths, bodies := maintainerrRoutes(t, createRoutes())
+	routes := createRoutes()
+	routes["GET /api/rules/9"] = `{"id":9,"name":"Old unwatched","libraryId":"lib-s","collectionId":9,"dataType":"show",
+	  "rules":[{"id":1,"ruleJson":"{\"action\":5}","section":0}],"collection":{"arrAction":0,"deleteAfterDays":30}}`
+	const after = `[{"id":9,"name":"Old unwatched","libraryId":"lib-s","collectionId":9}]`
+	c, paths, bodies := maintainerrCreateServer(t, routes, `[]`, after)
 	in := validNewRule()
 	in.LibraryID, in.ArrServerID = "lib-s", 2
 
-	_, _ = MaintainerrCreateRule(context.Background(), c, in)
+	_, err := MaintainerrCreateRule(context.Background(), c, in)
+	if err != nil {
+		t.Fatalf("MaintainerrCreateRule: %v", err)
+	}
+	var body string
 	for i, p := range *paths {
-		if p == "POST /api/rules" && !strings.Contains((*bodies)[i], `"sonarrSettingsId":2`) {
-			t.Errorf("body = %s, want sonarrSettingsId 2", (*bodies)[i])
+		if p == "POST /api/rules" {
+			body = (*bodies)[i]
 		}
+	}
+	if body == "" {
+		t.Fatalf("no POST /api/rules in %v", *paths)
+	}
+	if !strings.Contains(body, `"sonarrSettingsId":2`) {
+		t.Errorf("body = %s, want sonarrSettingsId 2", body)
+	}
+	if strings.Contains(body, "radarrSettingsId") {
+		t.Errorf("body = %s, want no radarrSettingsId", body)
 	}
 }
 
@@ -326,12 +391,34 @@ func TestMaintainerrCreateRuleValidatesBeforeCallingMaintainerr(t *testing.T) {
 
 // DO_NOTHING never reaches an *arr, so it needs no server.
 func TestMaintainerrCreateRuleAllowsDoNothingWithoutAServer(t *testing.T) {
-	c, _, _ := maintainerrRoutes(t, createRoutes())
+	c, paths, bodies := maintainerrCreateServer(t, createRoutes(), maintainerrRuleListBefore, maintainerrRuleListAfter)
 	in := validNewRule()
 	in.ArrAction, in.ArrServerID = "DO_NOTHING", 0
 
 	if _, err := MaintainerrCreateRule(context.Background(), c, in); err != nil {
-		t.Errorf("MaintainerrCreateRule: %v", err)
+		t.Fatalf("MaintainerrCreateRule: %v", err)
+	}
+	var body string
+	for i, p := range *paths {
+		if p == "POST /api/rules" {
+			body = (*bodies)[i]
+		}
+	}
+	if body == "" {
+		t.Fatalf("no POST /api/rules in %v", *paths)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal([]byte(body), &sent); err != nil {
+		t.Fatalf("unmarshal POST body: %v", err)
+	}
+	if sent["arrAction"] != float64(4) { // DO_NOTHING
+		t.Errorf("arrAction = %v, want 4 (DO_NOTHING)", sent["arrAction"])
+	}
+	if _, ok := sent["radarrSettingsId"]; ok {
+		t.Error("DO_NOTHING was sent a radarrSettingsId")
+	}
+	if _, ok := sent["sonarrSettingsId"]; ok {
+		t.Error("DO_NOTHING was sent a sonarrSettingsId")
 	}
 }
 
@@ -354,5 +441,55 @@ func TestMaintainerrCreateRuleSurfacesARefusal(t *testing.T) {
 	_, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
 	if err == nil || !strings.Contains(err.Error(), "Operator is required") {
 		t.Errorf("error = %v", err)
+	}
+}
+
+// A library type Maintainerr cannot map to Radarr or Sonarr (an artist or
+// photo library, say) must be rejected before any server check, rules
+// decode or write.
+func TestMaintainerrCreateRuleRejectsUnsupportedLibraryTypes(t *testing.T) {
+	routes := createRoutes()
+	routes["GET /api/media-server/libraries"] = `[{"id":"lib-m","title":"Movies","type":"movie"},
+	                                              {"id":"lib-x","title":"Music","type":"artist"}]`
+	c, paths, _ := maintainerrRoutes(t, routes)
+	in := validNewRule()
+	in.LibraryID = "lib-x"
+
+	_, err := MaintainerrCreateRule(context.Background(), c, in)
+	if err == nil || !strings.Contains(err.Error(), `"artist"`) {
+		t.Errorf("error = %v, want the unsupported type named", err)
+	}
+	if got := strings.Join(*paths, ","); got != "GET /api/media-server/libraries" {
+		t.Errorf("requests = %s, want only the library lookup", got)
+	}
+}
+
+// A POST that answers success without truly persisting must not be mistaken
+// for a create: the rule list looks the same before and after, so no id in
+// it qualifies as newly made, and the older same-named group must not be
+// returned as if it were.
+func TestMaintainerrCreateRuleRejectsAnUnchangedRuleList(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, createRoutes())
+
+	detail, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
+	if err == nil || !strings.Contains(err.Error(), "was not found") ||
+		!strings.Contains(err.Error(), "could not be read back") {
+		t.Errorf("error = %v, want a wrapped not-found refusal", err)
+	}
+	if detail.ID != 0 {
+		t.Errorf("detail = %+v, want the zero value", detail)
+	}
+}
+
+// A failure reading the group back after a successful POST must not look
+// like nothing happened: Maintainerr already holds a live rule group.
+func TestMaintainerrCreateRuleWrapsAReadBackFailure(t *testing.T) {
+	routes := createRoutes()
+	delete(routes, "GET /api/rules/8")
+	c, _, _ := maintainerrCreateServer(t, routes, maintainerrRuleListBefore, maintainerrRuleListAfter)
+
+	_, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
+	if err == nil || !strings.Contains(err.Error(), `rule group "Old unwatched" was created but could not be read back`) {
+		t.Errorf("error = %v, want a wrapped read-back failure", err)
 	}
 }

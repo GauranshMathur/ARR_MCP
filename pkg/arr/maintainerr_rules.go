@@ -319,9 +319,14 @@ func MaintainerrCreateRule(ctx context.Context, c *Client, in MaintainerrNewRule
 		return MaintainerrRuleDetail{}, fmt.Errorf("unknown libraryId %q; libraries: %s", in.LibraryID, strings.Join(valid, ", "))
 	}
 
-	serverKind, serverField := "radarr", "radarrSettingsId"
-	if lib.Type != "movie" {
+	var serverKind, serverField string
+	switch lib.Type {
+	case "movie":
+		serverKind, serverField = "radarr", "radarrSettingsId"
+	case "show":
 		serverKind, serverField = "sonarr", "sonarrSettingsId"
+	default:
+		return MaintainerrRuleDetail{}, fmt.Errorf("library %q has type %q, which maps to neither radarr nor sonarr", in.LibraryID, lib.Type)
 	}
 	if in.ArrServerID != 0 {
 		if err := maintainerrCheckArrServer(ctx, c, serverKind, in.ArrServerID); err != nil {
@@ -342,6 +347,17 @@ func MaintainerrCreateRule(ctx context.Context, c *Client, in MaintainerrNewRule
 	if in.ArrServerID != 0 {
 		group[serverField] = in.ArrServerID
 	}
+
+	// The highest rule id that exists before the create is the floor a
+	// recovered id must clear: Maintainerr's create answers success without
+	// the new group's id, and a POST that reports success without truly
+	// persisting must not be mistaken for one, by returning an older group
+	// that merely shares its name.
+	before, err := maintainerrHighestRuleID(ctx, c)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+
 	body, err := c.WithTimeout(maintainerrSlowTimeout).Post(ctx, "/rules", group)
 	if err != nil {
 		return MaintainerrRuleDetail{}, err
@@ -349,11 +365,19 @@ func MaintainerrCreateRule(ctx context.Context, c *Client, in MaintainerrNewRule
 	if err := maintainerrCheck(body, "create the rule group"); err != nil {
 		return MaintainerrRuleDetail{}, err
 	}
-	id, err := maintainerrFindRule(ctx, c, in.Name, lib.ID)
+
+	// From here Maintainerr has already reported success, so any failure to
+	// read the result back must say so: a live rule group exists even when
+	// this call cannot confirm which one it is.
+	id, err := maintainerrFindRule(ctx, c, in.Name, lib.ID, before)
 	if err != nil {
-		return MaintainerrRuleDetail{}, err
+		return MaintainerrRuleDetail{}, fmt.Errorf("rule group %q was created but could not be read back: %w", in.Name, err)
 	}
-	return MaintainerrGetRule(ctx, c, id)
+	detail, err := MaintainerrGetRule(ctx, c, id)
+	if err != nil {
+		return MaintainerrRuleDetail{}, fmt.Errorf("rule group %q was created but could not be read back: %w", in.Name, err)
+	}
+	return detail, nil
 }
 
 // maintainerrCheckArrServer confirms a server id exists for the kind a
@@ -376,17 +400,37 @@ func maintainerrCheckArrServer(ctx context.Context, c *Client, kind string, id i
 	return fmt.Errorf("no %s server with id %d; %s servers: %s", kind, id, kind, strings.Join(valid, ", "))
 }
 
-// maintainerrFindRule finds the group a create just made. Maintainerr answers
-// a create without its id, and names need not be unique, so the newest group
-// with this name on this library is taken.
-func maintainerrFindRule(ctx context.Context, c *Client, name, libraryID string) (int, error) {
+// maintainerrHighestRuleID returns the highest rule group id Maintainerr
+// currently reports, 0 when there are none. maintainerrFindRule uses it as
+// the floor a newly created group's id must clear.
+func maintainerrHighestRuleID(ctx context.Context, c *Client) (int, error) {
 	rules, err := MaintainerrListRules(ctx, c)
 	if err != nil {
 		return 0, err
 	}
 	id := 0
 	for _, r := range rules {
-		if r.Name == name && r.LibraryID == libraryID && r.ID > id {
+		if r.ID > id {
+			id = r.ID
+		}
+	}
+	return id, nil
+}
+
+// maintainerrFindRule finds the group a create just made. Maintainerr answers
+// a create without its id, and names need not be unique, so the newest group
+// with this name on this library is taken -- but only when its id is greater
+// than minID, the highest id that existed before the create: an id at or
+// below minID belongs to an older group that merely shares the name, not the
+// one just created.
+func maintainerrFindRule(ctx context.Context, c *Client, name, libraryID string, minID int) (int, error) {
+	rules, err := MaintainerrListRules(ctx, c)
+	if err != nil {
+		return 0, err
+	}
+	id := 0
+	for _, r := range rules {
+		if r.Name == name && r.LibraryID == libraryID && r.ID > minID && r.ID > id {
 			id = r.ID
 		}
 	}
