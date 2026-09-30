@@ -1,6 +1,7 @@
 package arr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -648,4 +649,47 @@ func MaintainerrDeleteRule(ctx context.Context, c *Client, id int) error {
 		return err
 	}
 	return maintainerrCheck(body, "delete the rule group")
+}
+
+// MaintainerrSetCollectionMembership adds an item to a collection by hand, or
+// removes it. Maintainerr needs the item's type and position to resolve shows,
+// seasons and episodes, so the item's metadata is read first. Both calls reach
+// the media server, so they run on the long timeout.
+func MaintainerrSetCollectionMembership(ctx context.Context, c *Client, collectionID int, mediaServerID string, add bool) error {
+	if err := maintainerrValidateMediaID(mediaServerID); err != nil {
+		return err
+	}
+	slow := c.WithTimeout(maintainerrSlowTimeout)
+	raw, err := slow.Get(ctx, "/media-server/meta/"+mediaServerID)
+	if err != nil {
+		return err
+	}
+	var meta struct {
+		Type        string `json:"type"`
+		Index       *int   `json:"index"`
+		ParentIndex *int   `json:"parentIndex"`
+	}
+	if len(bytes.TrimSpace(raw)) > 0 {
+		if err := unmarshal(raw, &meta); err != nil {
+			return err
+		}
+	}
+	if meta.Type == "" {
+		return fmt.Errorf("no media server item %q", mediaServerID)
+	}
+	itemContext := map[string]any{"id": mediaServerID, "type": meta.Type}
+	if meta.Index != nil {
+		itemContext["index"] = *meta.Index
+	}
+	if meta.ParentIndex != nil {
+		itemContext["parentIndex"] = *meta.ParentIndex
+	}
+	action := 1
+	if add {
+		action = 0
+	}
+	_, err = slow.Post(ctx, "/collections/media/add", map[string]any{
+		"action": action, "mediaId": mediaServerID, "collectionId": collectionID, "context": itemContext,
+	})
+	return err
 }

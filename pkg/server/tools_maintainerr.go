@@ -109,6 +109,13 @@ type DeletionPolicyArgs struct {
 	IsActive        *bool   `json:"isActive,omitempty" jsonschema:"false stops the rule group and its collection entirely"`
 }
 
+// CollectionMembershipArgs identifies one item in one collection.
+type CollectionMembershipArgs struct {
+	InstanceArg
+	CollectionID  int    `json:"collectionId" jsonschema:"collection id from maintainerr_list_collections"`
+	MediaServerID string `json:"mediaServerId" jsonschema:"media server item id"`
+}
+
 // --- maintainerr tool outputs ---
 
 // MaintainerrCollectionList wraps collection results.
@@ -158,4 +165,11 @@ type MaintainerrArrServerList struct {
 type MaintainerrRulePropertyList struct {
 	Properties []arr.MaintainerrRuleProperty `json:"properties"`
 	Count      int                           `json:"count"`
+}
+
+// MembershipChanged reports a manual collection change.
+type MembershipChanged struct {
+	CollectionID  int    `json:"collectionId"`
+	MediaServerID string `json:"mediaServerId"`
+	InCollection  bool   `json:"inCollection"`
 }

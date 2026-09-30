@@ -202,6 +202,26 @@ func registerMaintainerr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "maintainerr_add_to_collection",
+		description: "Add a media item to a Maintainerr collection by hand. It is then scheduled for the " +
+			"collection's arrAction like any rule match, deleteAfterDays from now.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in CollectionMembershipArgs) (MembershipChanged, error) {
+		err := arr.MaintainerrSetCollectionMembership(ctx, c, in.CollectionID, in.MediaServerID, true)
+		return MembershipChanged{CollectionID: in.CollectionID, MediaServerID: in.MediaServerID, InCollection: err == nil}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_remove_from_collection",
+		description: "Remove a media item from a Maintainerr collection, cancelling its scheduled action. " +
+			"A rule may add it back on its next run; use maintainerr_add_exclusion to keep it out.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in CollectionMembershipArgs) (MembershipChanged, error) {
+		err := arr.MaintainerrSetCollectionMembership(ctx, c, in.CollectionID, in.MediaServerID, false)
+		return MembershipChanged{CollectionID: in.CollectionID, MediaServerID: in.MediaServerID, InCollection: err != nil}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name: "maintainerr_execute_rules",
 		description: "Re-evaluate Maintainerr rules now, for one rule group or every active one. " +
 			"This updates collection membership; it does not run any collection's action. " +

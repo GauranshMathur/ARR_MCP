@@ -38,6 +38,7 @@ var maintainerrWriteTools = []string{
 	"maintainerr_add_exclusion",
 	"maintainerr_postpone_deletion",
 	"maintainerr_process_overlays",
+	"maintainerr_remove_from_collection",
 }
 
 // maintainerrDestructiveTools make media eligible for deletion from disk.
@@ -45,6 +46,7 @@ var maintainerrDestructiveTools = []string{
 	"maintainerr_remove_exclusion",
 	"maintainerr_set_deletion_policy",
 	"maintainerr_delete_rule",
+	"maintainerr_add_to_collection",
 }
 
 // maintainerrCfg configures one Maintainerr instance against url. It carries
@@ -100,9 +102,9 @@ func TestMaintainerrMutatingToolsAreHiddenInReadOnlyMode(t *testing.T) {
 	}
 }
 
-// A confirm-destructive deployment must still stop to ask before an exclusion
-// is removed, which is how the tier reaches the user.
-func TestMaintainerrRemoveExclusionIsDestructive(t *testing.T) {
+// A confirm-destructive deployment must still stop to ask before any
+// destructive maintainerr tool runs, which is how the tier reaches the user.
+func TestMaintainerrDestructiveToolsAreAnnotated(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, maintainerrCfg(srv.URL, permsFull))
 
@@ -110,16 +112,21 @@ func TestMaintainerrRemoveExclusionIsDestructive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
+	seen := map[string]bool{}
 	for _, tool := range res.Tools {
-		if tool.Name != "maintainerr_remove_exclusion" {
+		if !has(maintainerrDestructiveTools, tool.Name) {
 			continue
 		}
+		seen[tool.Name] = true
 		if tool.Annotations == nil || tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
-			t.Errorf("maintainerr_remove_exclusion annotations = %+v, want destructive", tool.Annotations)
+			t.Errorf("%s annotations = %+v, want destructive", tool.Name, tool.Annotations)
 		}
-		return
 	}
-	t.Fatal("maintainerr_remove_exclusion not advertised")
+	for _, name := range maintainerrDestructiveTools {
+		if !seen[name] {
+			t.Errorf("%s not advertised", name)
+		}
+	}
 }
 
 // routedArr serves a fixed body per "METHOD /path", recording each request's

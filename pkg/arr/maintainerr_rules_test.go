@@ -783,3 +783,51 @@ func TestMaintainerrDeleteRule(t *testing.T) {
 		t.Errorf("requests = %v", *paths)
 	}
 }
+
+func TestMaintainerrMembershipSendsTheItemsContext(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, map[string]string{
+		"GET /api/media-server/meta/abc":  `{"id":"abc","title":"S1","type":"season","index":1,"parentIndex":null}`,
+		"POST /api/collections/media/add": `{"id":2}`,
+	})
+	ctx := context.Background()
+
+	if err := MaintainerrSetCollectionMembership(ctx, c, 2, "abc", true); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := MaintainerrSetCollectionMembership(ctx, c, 2, "abc", false); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if got := strings.Join(*paths, ","); got != "GET /api/media-server/meta/abc,POST /api/collections/media/add,"+
+		"GET /api/media-server/meta/abc,POST /api/collections/media/add" {
+		t.Errorf("requests = %s", got)
+	}
+	if (*bodies)[1] != `{"action":0,"collectionId":2,"context":{"id":"abc","index":1,"type":"season"},"mediaId":"abc"}` {
+		t.Errorf("add body = %s", (*bodies)[1])
+	}
+	if !strings.HasPrefix((*bodies)[3], `{"action":1,`) {
+		t.Errorf("remove body = %s", (*bodies)[3])
+	}
+}
+
+// Metadata answers an unknown id with 200 and an empty body.
+func TestMaintainerrMembershipNamesUnknownItems(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, map[string]string{
+		"GET /api/media-server/meta/nope": ``,
+	})
+
+	err := MaintainerrSetCollectionMembership(context.Background(), c, 2, "nope", true)
+	if err == nil || !strings.Contains(err.Error(), `no media server item "nope"`) {
+		t.Errorf("error = %v", err)
+	}
+	if len(*paths) != 1 {
+		t.Errorf("requests = %v, want only the metadata read", *paths)
+	}
+}
+
+func TestMaintainerrMembershipRejectsPathLikeIDs(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, map[string]string{})
+
+	if err := MaintainerrSetCollectionMembership(context.Background(), c, 2, "../settings", true); err == nil || len(*paths) != 0 {
+		t.Errorf("error = %v, requests = %v", err, *paths)
+	}
+}
