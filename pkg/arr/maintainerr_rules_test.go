@@ -656,13 +656,16 @@ func TestMaintainerrSetDeletionPolicyWritesTopLevelAndCollection(t *testing.T) {
 
 func TestMaintainerrSetDeletionPolicyValidates(t *testing.T) {
 	c, paths, _ := maintainerrRoutes(t, updateRoutes())
-	bad, over := "PURGE", 36501
+	bad, over, under := "PURGE", 36501, -1
 
 	if _, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{ArrAction: &bad}); err == nil {
 		t.Error("unknown action accepted")
 	}
 	if _, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{DeleteAfterDays: &over}); err == nil {
 		t.Error("days over the maximum accepted")
+	}
+	if _, err := MaintainerrSetDeletionPolicy(context.Background(), c, 5, MaintainerrDeletionPolicy{DeleteAfterDays: &under}); err == nil {
+		t.Error("negative days accepted")
 	}
 	if len(*paths) != 0 {
 		t.Errorf("requests sent: %v", *paths)
@@ -672,12 +675,17 @@ func TestMaintainerrSetDeletionPolicyValidates(t *testing.T) {
 func TestMaintainerrUpdateCollectionNamesUnknownCollections(t *testing.T) {
 	routes := updateRoutes()
 	routes["GET /api/rules/collection/5"] = ``
-	c, _, _ := maintainerrRoutes(t, routes)
+	c, paths, _ := maintainerrRoutes(t, routes)
 	on := true
 
 	_, err := MaintainerrUpdateCollection(context.Background(), c, 5, MaintainerrCollectionPatch{OverlayEnabled: &on})
 	if err == nil || !strings.Contains(err.Error(), "no rule group for collection with id 5") {
 		t.Errorf("error = %v", err)
+	}
+	for _, p := range *paths {
+		if p == "PUT /api/rules" {
+			t.Fatal("PUT sent")
+		}
 	}
 }
 
@@ -703,5 +711,57 @@ func TestMaintainerrUpdateRuleWrapsAReadBackFailure(t *testing.T) {
 	}
 	if puts != 1 {
 		t.Errorf("PUT /api/rules sent %d times, want 1", puts)
+	}
+}
+
+// A blank name would still be accepted upstream and would leave the rule
+// group effectively unnamed; reject it before any request is sent.
+func TestMaintainerrUpdateRuleRejectsABlankName(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, updateRoutes())
+	blank := "   "
+
+	if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &blank}); err == nil {
+		t.Error("blank name accepted")
+	}
+	if len(*paths) != 0 {
+		t.Errorf("requests sent: %v", *paths)
+	}
+}
+
+// group["rules"] missing or null must not be read as an empty rule set: a
+// type assertion that silently falls back to nil would PUT "rules":[] and
+// wipe every condition of a live group on an unrelated edit such as a rename.
+// An empty array is a different case and stays valid (covered by the rules:
+// [] round trip in TestMaintainerrUpdateRuleReplacesRulesFromYAML).
+func TestMaintainerrUpdateRefusesGroupsWithNoReadableRulesField(t *testing.T) {
+	cases := map[string]func(map[string]any){
+		"missing": func(g map[string]any) { delete(g, "rules") },
+		"null":    func(g map[string]any) { g["rules"] = nil },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			var group map[string]any
+			if err := json.Unmarshal([]byte(storedGroup), &group); err != nil {
+				t.Fatalf("unmarshal storedGroup: %v", err)
+			}
+			mutate(group)
+			b, err := json.Marshal(group)
+			if err != nil {
+				t.Fatalf("marshal mutated group: %v", err)
+			}
+			routes := updateRoutes()
+			routes["GET /api/rules/2"] = string(b)
+			c, paths, _ := maintainerrRoutes(t, routes)
+			rename := "TV"
+
+			if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &rename}); err == nil {
+				t.Error("update proceeded with no readable rules field")
+			}
+			for _, p := range *paths {
+				if p == "PUT /api/rules" {
+					t.Fatal("PUT sent")
+				}
+			}
+		})
 	}
 }

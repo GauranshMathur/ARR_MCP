@@ -452,9 +452,14 @@ var maintainerrHoisted = []string{
 
 // maintainerrStoredRules turns stored rule rows back into rule objects. PUT
 // saves each rule as JSON.stringify(rule), so sending the rows would store the
-// rows themselves as rules.
+// rows themselves as rules. A missing or null rules field must not be read as
+// an empty rule set: PUT would then wipe every condition of a live group on
+// an unrelated edit such as a rename. A genuinely empty array stays valid.
 func maintainerrStoredRules(v any) ([]json.RawMessage, error) {
-	rows, _ := v.([]any)
+	rows, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("rule group has no readable rules; nothing was changed")
+	}
 	out := make([]json.RawMessage, 0, len(rows))
 	for i, row := range rows {
 		m, _ := row.(map[string]any)
@@ -531,6 +536,9 @@ type MaintainerrRulePatch struct {
 func MaintainerrUpdateRule(ctx context.Context, c *Client, id int, p MaintainerrRulePatch) (MaintainerrRuleDetail, error) {
 	if p == (MaintainerrRulePatch{}) {
 		return MaintainerrRuleDetail{}, fmt.Errorf("nothing to change: set name, description, rulesYaml or ruleHandlerCronSchedule")
+	}
+	if p.Name != nil && strings.TrimSpace(*p.Name) == "" {
+		return MaintainerrRuleDetail{}, fmt.Errorf("name must not be blank")
 	}
 	return maintainerrUpdateRule(ctx, c, id, func(group, _ map[string]any) error {
 		if p.Name != nil {

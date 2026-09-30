@@ -158,7 +158,8 @@ func registerMaintainerr(s *Server) {
 		name: "maintainerr_update_rule",
 		description: "Change a Maintainerr rule group's name, description, conditions (rulesYaml replaces " +
 			"all of them) or schedule. Every other setting is kept. To change the action, grace period or " +
-			"active state, use maintainerr_set_deletion_policy.",
+			"active state, use maintainerr_set_deletion_policy. Broadening the conditions of a collection " +
+			"whose arrAction deletes files adds more items to it; check with maintainerr_test_rule first.",
 		access: AccessWrite,
 	}, func(ctx context.Context, c *arr.Client, in UpdateRuleArgs) (arr.MaintainerrRuleDetail, error) {
 		return arr.MaintainerrUpdateRule(ctx, c, in.ID, arr.MaintainerrRulePatch{
