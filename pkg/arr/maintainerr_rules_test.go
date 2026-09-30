@@ -206,3 +206,153 @@ func TestMaintainerrTestRuleRejectsPathLikeIDs(t *testing.T) {
 		t.Errorf("error = %v, requests = %v", err, *paths)
 	}
 }
+
+// createRoutes answers every call a successful create makes. The rule list
+// holds an older group with the same name, which the create must not pick.
+func createRoutes() map[string]string {
+	return map[string]string{
+		"GET /api/media-server/libraries": `[{"id":"lib-m","title":"Movies","type":"movie"},{"id":"lib-s","title":"Shows","type":"show"}]`,
+		"GET /api/settings/radarr":        `[{"id":1,"serverName":"Radarr","url":"http://r","apiKey":"k"}]`,
+		"GET /api/settings/sonarr":        `[{"id":1,"serverName":"Sonarr","url":"http://s","apiKey":"k"},{"id":2,"serverName":"Anime","url":"http://s2","apiKey":"k"}]`,
+		"POST /api/rules/yaml/decode":     `{"code":1,"result":"{\"rules\":[{\"action\":5,\"section\":0}]}"}`,
+		"POST /api/rules":                 `{"code":1,"result":"Success"}`,
+		"GET /api/rules": `[{"id":3,"name":"Old unwatched","libraryId":"lib-m","collectionId":3},
+		                    {"id":8,"name":"Old unwatched","libraryId":"lib-m","collectionId":8}]`,
+		"GET /api/rules/8": `{"id":8,"name":"Old unwatched","libraryId":"lib-m","collectionId":8,"dataType":"movie",
+		  "rules":[{"id":1,"ruleJson":"{\"action\":5}","section":0}],"collection":{"arrAction":0,"deleteAfterDays":30}}`,
+		"POST /api/rules/yaml/encode": `{"code":1,"result":"rules: []"}`,
+	}
+}
+
+func validNewRule() MaintainerrNewRule {
+	return MaintainerrNewRule{
+		Name: "Old unwatched", LibraryID: "lib-m", ArrAction: "delete",
+		DeleteAfterDays: 30, ArrServerID: 1, RulesYAML: "rules: []",
+	}
+}
+
+func TestMaintainerrCreateRuleSendsAnExplicitActiveGroup(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, createRoutes())
+
+	detail, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
+	if err != nil {
+		t.Fatalf("MaintainerrCreateRule: %v", err)
+	}
+	// Two groups share the name; the newest is the one just created.
+	if detail.ID != 8 {
+		t.Errorf("returned group %d, want 8", detail.ID)
+	}
+	var sent map[string]any
+	for i, p := range *paths {
+		if p == "POST /api/rules" {
+			_ = json.Unmarshal([]byte((*bodies)[i]), &sent)
+		}
+	}
+	if sent == nil {
+		t.Fatalf("no POST /api/rules in %v", *paths)
+	}
+	// useRules must be explicit: Maintainerr saves rules only when it is true.
+	for k, want := range map[string]any{
+		"name": "Old unwatched", "libraryId": "lib-m", "dataType": "movie",
+		"isActive": true, "useRules": true, "arrAction": float64(0), "radarrSettingsId": float64(1),
+	} {
+		if sent[k] != want {
+			t.Errorf("%s = %v, want %v", k, sent[k], want)
+		}
+	}
+	if _, ok := sent["sonarrSettingsId"]; ok {
+		t.Error("a movie group was sent a sonarrSettingsId")
+	}
+	col, _ := sent["collection"].(map[string]any)
+	if col["deleteAfterDays"] != float64(30) {
+		t.Errorf("collection = %v", col)
+	}
+}
+
+func TestMaintainerrCreateRuleMapsShowServersToSonarr(t *testing.T) {
+	c, paths, bodies := maintainerrRoutes(t, createRoutes())
+	in := validNewRule()
+	in.LibraryID, in.ArrServerID = "lib-s", 2
+
+	_, _ = MaintainerrCreateRule(context.Background(), c, in)
+	for i, p := range *paths {
+		if p == "POST /api/rules" && !strings.Contains((*bodies)[i], `"sonarrSettingsId":2`) {
+			t.Errorf("body = %s, want sonarrSettingsId 2", (*bodies)[i])
+		}
+	}
+}
+
+// Radarr and Sonarr ids overlap, so an id is only valid for the kind the
+// library needs. Nothing may be posted when it is wrong.
+func TestMaintainerrCreateRuleRejectsAServerOfTheWrongKind(t *testing.T) {
+	c, paths, _ := maintainerrRoutes(t, createRoutes())
+	in := validNewRule()
+	in.ArrServerID = 2 // exists only as a Sonarr id
+
+	_, err := MaintainerrCreateRule(context.Background(), c, in)
+	if err == nil || !strings.Contains(err.Error(), "no radarr server with id 2") {
+		t.Errorf("error = %v", err)
+	}
+	for _, p := range *paths {
+		if p == "POST /api/rules" {
+			t.Fatal("rule group was created with an invalid server")
+		}
+	}
+}
+
+func TestMaintainerrCreateRuleValidatesBeforeCallingMaintainerr(t *testing.T) {
+	cases := map[string]func(*MaintainerrNewRule){
+		"grace period of 0 acts on the next run": func(r *MaintainerrNewRule) { r.DeleteAfterDays = 0 },
+		"grace period over the maximum":          func(r *MaintainerrNewRule) { r.DeleteAfterDays = 36501 },
+		"unknown arrAction":                      func(r *MaintainerrNewRule) { r.ArrAction = "PURGE" },
+		"missing arrAction":                      func(r *MaintainerrNewRule) { r.ArrAction = "" },
+		"missing server for a real action":       func(r *MaintainerrNewRule) { r.ArrServerID = 0 },
+		"missing name":                           func(r *MaintainerrNewRule) { r.Name = " " },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			c, paths, _ := maintainerrRoutes(t, createRoutes())
+			in := validNewRule()
+			mutate(&in)
+			if _, err := MaintainerrCreateRule(context.Background(), c, in); err == nil {
+				t.Fatal("accepted")
+			}
+			if len(*paths) != 0 {
+				t.Errorf("called maintainerr: %v", *paths)
+			}
+		})
+	}
+}
+
+// DO_NOTHING never reaches an *arr, so it needs no server.
+func TestMaintainerrCreateRuleAllowsDoNothingWithoutAServer(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, createRoutes())
+	in := validNewRule()
+	in.ArrAction, in.ArrServerID = "DO_NOTHING", 0
+
+	if _, err := MaintainerrCreateRule(context.Background(), c, in); err != nil {
+		t.Errorf("MaintainerrCreateRule: %v", err)
+	}
+}
+
+func TestMaintainerrCreateRuleNamesUnknownLibraries(t *testing.T) {
+	c, _, _ := maintainerrRoutes(t, createRoutes())
+	in := validNewRule()
+	in.LibraryID = "nope"
+
+	_, err := MaintainerrCreateRule(context.Background(), c, in)
+	if err == nil || !strings.Contains(err.Error(), "lib-m (Movies)") {
+		t.Errorf("error = %v, want the valid libraries listed", err)
+	}
+}
+
+func TestMaintainerrCreateRuleSurfacesARefusal(t *testing.T) {
+	routes := createRoutes()
+	routes["POST /api/rules"] = `{"code":0,"result":"Operator is required for every rule after the first"}`
+	c, _, _ := maintainerrRoutes(t, routes)
+
+	_, err := MaintainerrCreateRule(context.Background(), c, validNewRule())
+	if err == nil || !strings.Contains(err.Error(), "Operator is required") {
+		t.Errorf("error = %v", err)
+	}
+}

@@ -253,3 +253,145 @@ func MaintainerrTestRule(ctx context.Context, c *Client, ruleGroupID int, mediaS
 	}
 	return out, nil
 }
+
+// maintainerrDeleteAfterMaxDays is Maintainerr's DELETE_AFTER_MAX_DAYS.
+const maintainerrDeleteAfterMaxDays = 36500
+
+// maintainerrArrActionIndex turns an arrAction name into Maintainerr's enum
+// value. The name is required: an omitted action is DELETE upstream.
+func maintainerrArrActionIndex(name string) (int, error) {
+	for i, n := range maintainerrArrActions {
+		if strings.EqualFold(n, name) {
+			return i, nil
+		}
+	}
+	return 0, fmt.Errorf("unknown arrAction %q; want one of: %s", name, strings.Join(maintainerrArrActions, ", "))
+}
+
+// MaintainerrNewRule describes a rule group to create.
+type MaintainerrNewRule struct {
+	Name            string
+	Description     string
+	LibraryID       string
+	ArrAction       string
+	DeleteAfterDays int
+	ArrServerID     int
+	RulesYAML       string
+	OverlayEnabled  bool
+}
+
+// MaintainerrCreateRule creates an active rule group and its collection.
+// Validation that needs no network runs first, so a bad request sends
+// nothing. The grace period must be at least a day: this is a write-tier
+// call, and an immediate action belongs to maintainerr_set_deletion_policy,
+// which asks first.
+func MaintainerrCreateRule(ctx context.Context, c *Client, in MaintainerrNewRule) (MaintainerrRuleDetail, error) {
+	if strings.TrimSpace(in.Name) == "" {
+		return MaintainerrRuleDetail{}, fmt.Errorf("name is required")
+	}
+	action, err := maintainerrArrActionIndex(in.ArrAction)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	if in.DeleteAfterDays < 1 || in.DeleteAfterDays > maintainerrDeleteAfterMaxDays {
+		return MaintainerrRuleDetail{}, fmt.Errorf("deleteAfterDays must be 1 to %d; to act sooner, create the "+
+			"group and then use maintainerr_set_deletion_policy", maintainerrDeleteAfterMaxDays)
+	}
+	doNothing := maintainerrArrActions[action] == "DO_NOTHING"
+	if in.ArrServerID == 0 && !doNothing {
+		return MaintainerrRuleDetail{}, fmt.Errorf("arrServerId is required unless arrAction is DO_NOTHING; " +
+			"list them with maintainerr_list_arr_servers")
+	}
+
+	libs, err := MaintainerrListLibraries(ctx, c)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	var lib *MaintainerrLibrary
+	valid := make([]string, 0, len(libs))
+	for i := range libs {
+		valid = append(valid, libs[i].ID+" ("+libs[i].Title+")")
+		if libs[i].ID == in.LibraryID {
+			lib = &libs[i]
+		}
+	}
+	if lib == nil {
+		return MaintainerrRuleDetail{}, fmt.Errorf("unknown libraryId %q; libraries: %s", in.LibraryID, strings.Join(valid, ", "))
+	}
+
+	serverKind, serverField := "radarr", "radarrSettingsId"
+	if lib.Type != "movie" {
+		serverKind, serverField = "sonarr", "sonarrSettingsId"
+	}
+	if in.ArrServerID != 0 {
+		if err := maintainerrCheckArrServer(ctx, c, serverKind, in.ArrServerID); err != nil {
+			return MaintainerrRuleDetail{}, err
+		}
+	}
+
+	rules, err := maintainerrDecodeRules(ctx, c, in.RulesYAML, lib.Type)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	group := map[string]any{
+		"libraryId": lib.ID, "name": in.Name, "description": in.Description, "dataType": lib.Type,
+		// useRules must be sent: Maintainerr saves the rules only when it is true.
+		"isActive": true, "useRules": true, "arrAction": action, "rules": rules,
+		"collection": map[string]any{"deleteAfterDays": in.DeleteAfterDays, "overlayEnabled": in.OverlayEnabled},
+	}
+	if in.ArrServerID != 0 {
+		group[serverField] = in.ArrServerID
+	}
+	body, err := c.WithTimeout(maintainerrSlowTimeout).Post(ctx, "/rules", group)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	if err := maintainerrCheck(body, "create the rule group"); err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	id, err := maintainerrFindRule(ctx, c, in.Name, lib.ID)
+	if err != nil {
+		return MaintainerrRuleDetail{}, err
+	}
+	return MaintainerrGetRule(ctx, c, id)
+}
+
+// maintainerrCheckArrServer confirms a server id exists for the kind a
+// library needs. Radarr and Sonarr ids overlap, so an id alone proves nothing.
+func maintainerrCheckArrServer(ctx context.Context, c *Client, kind string, id int) error {
+	servers, err := MaintainerrListArrServers(ctx, c)
+	if err != nil {
+		return err
+	}
+	var valid []string
+	for _, s := range servers {
+		if s.Kind != kind {
+			continue
+		}
+		if s.ID == id {
+			return nil
+		}
+		valid = append(valid, fmt.Sprintf("%d (%s)", s.ID, s.ServerName))
+	}
+	return fmt.Errorf("no %s server with id %d; %s servers: %s", kind, id, kind, strings.Join(valid, ", "))
+}
+
+// maintainerrFindRule finds the group a create just made. Maintainerr answers
+// a create without its id, and names need not be unique, so the newest group
+// with this name on this library is taken.
+func maintainerrFindRule(ctx context.Context, c *Client, name, libraryID string) (int, error) {
+	rules, err := MaintainerrListRules(ctx, c)
+	if err != nil {
+		return 0, err
+	}
+	id := 0
+	for _, r := range rules {
+		if r.Name == name && r.LibraryID == libraryID && r.ID > id {
+			id = r.ID
+		}
+	}
+	if id == 0 {
+		return 0, fmt.Errorf("maintainerr reported success but rule group %q was not found", name)
+	}
+	return id, nil
+}

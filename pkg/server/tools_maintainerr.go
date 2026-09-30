@@ -65,6 +65,20 @@ type TestRuleArgs struct {
 	MediaServerID string `json:"mediaServerId" jsonschema:"media server item id to test, e.g. from maintainerr_collection_media"`
 }
 
+// CreateRuleArgs is the input for maintainerr_create_rule. arrAction and
+// deleteAfterDays have no defaults: an omitted action is DELETE upstream.
+type CreateRuleArgs struct {
+	InstanceArg
+	Name            string `json:"name"`
+	Description     string `json:"description,omitempty"`
+	LibraryID       string `json:"libraryId" jsonschema:"library id from maintainerr_list_libraries; decides movie or show"`
+	ArrAction       string `json:"arrAction" jsonschema:"what happens when the grace period ends: DELETE, UNMONITOR_DELETE_ALL, UNMONITOR_DELETE_EXISTING, UNMONITOR, DO_NOTHING, DELETE_SHOW_IF_EMPTY, UNMONITOR_SHOW_IF_EMPTY or CHANGE_QUALITY_PROFILE"`
+	DeleteAfterDays int    `json:"deleteAfterDays" jsonschema:"grace period in days, 1 to 36500, between an item entering the collection and its arrAction"`
+	ArrServerID     int    `json:"arrServerId,omitempty" jsonschema:"id from maintainerr_list_arr_servers of the kind the library needs (radarr for movies, sonarr for shows); required unless arrAction is DO_NOTHING"`
+	RulesYAML       string `json:"rulesYaml" jsonschema:"conditions in Maintainerr's YAML; see maintainerr_get_rule for examples and maintainerr_list_rule_properties for property names"`
+	OverlayEnabled  bool   `json:"overlayEnabled,omitempty" jsonschema:"show the deletion date on posters"`
+}
+
 // --- maintainerr tool outputs ---
 
 // MaintainerrCollectionList wraps collection results.

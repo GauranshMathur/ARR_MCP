@@ -141,6 +141,20 @@ func registerMaintainerr(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "maintainerr_create_rule",
+		description: "Create an active Maintainerr rule group and its collection. Items the rules match " +
+			"enter the collection on the next rule run, and arrAction runs deleteAfterDays after that. " +
+			"Check a known title with maintainerr_test_rule afterwards.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in CreateRuleArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrCreateRule(ctx, c, arr.MaintainerrNewRule{
+			Name: in.Name, Description: in.Description, LibraryID: in.LibraryID,
+			ArrAction: in.ArrAction, DeleteAfterDays: in.DeleteAfterDays, ArrServerID: in.ArrServerID,
+			RulesYAML: in.RulesYAML, OverlayEnabled: in.OverlayEnabled,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
 		name: "maintainerr_execute_rules",
 		description: "Re-evaluate Maintainerr rules now, for one rule group or every active one. " +
 			"This updates collection membership; it does not run any collection's action. " +
