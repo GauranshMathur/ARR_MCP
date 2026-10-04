@@ -35,9 +35,9 @@ permissions:
   fallback: deny
 
 # Supported services: sonarr, radarr, prowlarr, bazarr, qbittorrent, nzbget,
-# maintainerr.
+# maintainerr, seerr.
 # Anything else is rejected at startup rather than ignored, so a typo is caught
-# immediately. The *arr services take an apiKey; the download clients
+# immediately. The *arr services and seerr take an apiKey; the download clients
 # (qbittorrent, nzbget) take a username and password instead, and maintainerr,
 # which has no authentication, takes only a url.
 #
@@ -103,3 +103,9 @@ services:
   maintainerr:
     - name: main
       url: http://192.168.10.25:6246
+
+  # Seerr (Jellyseerr/Overseerr): Settings -> General -> API Key.
+  seerr:
+    - name: main
+      url: http://192.168.10.26:5055
+      apiKey: ${SEERR_API_KEY}

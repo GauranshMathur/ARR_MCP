@@ -1,11 +1,11 @@
 # ARR-MCP
 
-An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — including **multiple instances of each**.
+An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr and Seerr — including **multiple instances of each**.
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **271 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — what you would otherwise do by clicking through each web UI
+- **288 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr and Seerr — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -105,6 +105,7 @@ exactly, with no surrounding whitespace.
 | Radarr | Settings → General → **Security** → API Key | 7878 |
 | Prowlarr | Settings → General → **Security** → API Key | 9696 |
 | Bazarr | Settings → General → **Security** → API Key | 6767 |
+| Seerr | Settings → General → API Key | 5055 |
 
 The download clients have no API key; they take the same username and password you log
 into their web UI with:
@@ -159,6 +160,8 @@ NZBGET_URL=http://192.168.10.21:6789
 NZBGET_USERNAME=nzbget
 NZBGET_PASSWORD=...
 MAINTAINERR_URL=http://192.168.10.25:6246
+SEERR_URL=http://192.168.10.26:5055
+SEERR_API_KEY=...
 ```
 
 A service is configured only when **all** its variables are set; setting just some of
@@ -194,14 +197,14 @@ sonarr_search_series{query: "Severance", instance: "anime"}
 Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
 
 - Every instance needs a `name`, a `url` and its credential: an `apiKey` for the \*arr
-  services and Bazarr, a `username` and `password` for `qbittorrent` and `nzbget`, and
+  services, Bazarr and Seerr, a `username` and `password` for `qbittorrent` and `nzbget`, and
   nothing for `maintainerr`, which has no authentication. Supplying the wrong kind is an
   error, not a silent fallback.
 - Instance names must be unique within a service, and at most one may be `default`.
 - With several instances and no `default`, a tool call that omits `instance` fails with a
   message listing the valid names — it does not silently pick the first one.
-- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget` and `maintainerr`
-  are accepted;
+- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget`, `maintainerr`
+  and `seerr` are accepted;
   anything else is rejected rather than ignored, so a typo like `sonar:` is caught
   immediately.
 
@@ -512,6 +515,28 @@ deletion closer is destructive-tier. See [Scope](#maintainerr) for what is left 
 | `maintainerr_delete_rule` — also removes the media server collection | destructive |
 | `maintainerr_remove_exclusion` — the item becomes deletable again | destructive |
 
+### Seerr (17)
+
+Media requests: who asked for what, what is waiting for approval, and what failed to
+reach Sonarr or Radarr. A request carries only TMDB ids, so `seerr_get_media` turns one
+into a title. Requests made through these tools are filed as the administrator unless
+`userId` names someone else. See [Scope](#seerr) for what is left out.
+
+| Tool | Access |
+|---|---|
+| `seerr_system_status` — version, update available, totals | read |
+| `seerr_request_counts` — pending, approved, declined, processing, available, completed | read |
+| `seerr_list_requests` — filter by state or user; `pending` awaits approval, `failed` needs a retry | read |
+| `seerr_get_request` | read |
+| `seerr_search`, `seerr_discover` — trending, popular movies or popular shows | read |
+| `seerr_get_media` — a movie or show by TMDB id, with its availability and requests | read |
+| `seerr_list_users` — request counts per user; emails are never returned | read |
+| `seerr_list_issues`, `seerr_get_issue` — problems users reported, with comments | read |
+| `seerr_create_request` — a movie, or a show's seasons; an administrator's request is approved at once | write |
+| `seerr_approve_request`, `seerr_decline_request`, `seerr_retry_request` | write |
+| `seerr_comment_issue`, `seerr_set_issue_status` — resolve or reopen | write |
+| `seerr_delete_request` | destructive |
+
 ### What responses contain
 
 Upstream payloads are far too large to return as they arrive — a single Sonarr
@@ -664,13 +689,22 @@ is not sent. Left out on purpose: running collection handling (`/collections/han
 which deletes due media immediately), collection-only groups without rules, and every
 write under `/api/settings`, which returns every stored credential in plaintext.
 
-### Not planned: media servers and request managers (Jellyfin, Overseerr, Plex)
+### Seerr
 
-None of them are \*arr-named, and none of them speak the \*arr API contract — Plex uses
-its own token scheme and XML-flavoured API, and the request managers wrap their own
-approval workflows around a different data model. Supporting any of them means a bespoke
-client with its own auth handling, response shapes and tests, for a capability that
-overlaps heavily with what the \*arr tools already expose.
+Seerr (the merged Jellyseerr and Overseerr) serves `/api/v1` with the same `X-Api-Key`
+header the \*arr apps use, so it needed no transport change. Its `/status` answers
+without a key, so the health check reads `/settings/about` instead, which means
+`--check` fails on a wrong key rather than passing. Left out on purpose: user
+management, every `/settings` write, editing a request (`PUT /request/{id}`), and
+`DELETE /media/{id}` and `DELETE /media/{id}/file`, the second of which deletes files
+from disk; Maintainerr owns deletion.
+
+### Not planned: media servers (Jellyfin, Plex)
+
+Neither is \*arr-named, and neither speaks the \*arr API contract — Plex uses its own
+token scheme and XML-flavoured API. Supporting either means a bespoke client with its own
+auth handling, response shapes and tests, for a capability that overlaps heavily with what
+the \*arr tools already expose.
 
 ### Download clients (qBittorrent, NZBGet)
 
