@@ -45,6 +45,9 @@ type ServiceSpec struct {
 	// Only the name is meaningful: net/http canonicalises header casing, so a
 	// spec cannot request a differently-cased spelling of the same name.
 	AuthHeader string
+	// AuthHeaderFormat is a fmt format with one %s that wraps the key to form
+	// the header value, e.g. `MediaBrowser Token="%s"`. Empty sends the raw key.
+	AuthHeaderFormat string
 }
 
 // Specs for the services this build supports.
@@ -75,6 +78,15 @@ var (
 	// /status answers without a key, so the status path is /settings/about,
 	// which needs one and lets --check catch a wrong key.
 	SeerrSpec = ServiceSpec{Name: "seerr", BasePath: "/api/v1", StatusPath: "/settings/about", Auth: AuthHeaderKey}
+	// JellyfinSpec describes Jellyfin, which takes the key as a MediaBrowser
+	// token in the Authorization header. On 12.0 the legacy X-Emby-Token header
+	// and the api_key query parameter are both rejected with 401. The status
+	// path is /System/Info because /System/Info/Public answers without a key
+	// and so would not prove the credentials work.
+	JellyfinSpec = ServiceSpec{
+		Name: "jellyfin", BasePath: "", StatusPath: "/System/Info",
+		Auth: AuthHeaderKey, AuthHeader: "Authorization", AuthHeaderFormat: `MediaBrowser Token="%s"`,
+	}
 )
 
 // defaultTimeout bounds ordinary reads and fire-and-forget commands.
@@ -147,7 +159,11 @@ func (c *Client) authorize(req *http.Request) {
 		if header == "" {
 			header = "X-Api-Key"
 		}
-		req.Header.Set(header, c.creds.APIKey)
+		value := c.creds.APIKey
+		if c.spec.AuthHeaderFormat != "" {
+			value = fmt.Sprintf(c.spec.AuthHeaderFormat, value)
+		}
+		req.Header.Set(header, value)
 	case AuthBasic:
 		req.SetBasicAuth(c.creds.Username, c.creds.Password)
 	case AuthNone, AuthSession:

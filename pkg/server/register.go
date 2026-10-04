@@ -18,6 +18,7 @@ func registerAll(s *Server) {
 	registerNZBGet(s)
 	registerMaintainerr(s)
 	registerSeerr(s)
+	registerJellyfin(s)
 
 	registerOperations(s, "sonarr", arr.SonarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "radarr", arr.RadarrSpec, operationOpts{hasQueue: true})

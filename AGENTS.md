@@ -37,7 +37,7 @@ Record anything surprising in the commit body. Real examples already found: Prow
 
 Adding a service should mean *describing* it, not writing a new client.
 
-1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`. Auth schemes: `AuthHeaderKey` (the \*arr apps, Bazarr), `AuthBasic` (NZBGet), `AuthSession` (qBittorrent's form login + cookie).
+1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`. Auth schemes: `AuthHeaderKey` (the \*arr apps, Bazarr, Jellyfin), `AuthBasic` (NZBGet), `AuthSession` (qBittorrent's form login + cookie). If the key must be wrapped rather than sent raw, set `ServiceSpec.AuthHeaderFormat` — a format with one `%s`, e.g. Jellyfin's `MediaBrowser Token="%s"` in `Authorization`; empty sends the raw key. It is a variant of `AuthHeaderKey`, not another scheme.
 2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`. If it authenticates with a username and password rather than an API key, add it to `serviceCredentials` too — that drives config validation and the `<SERVICE>_USERNAME`/`<SERVICE>_PASSWORD` env fallback.
 3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`. Two call shapes exist: REST services use `GetJSON`/`Post`/`PostForm`; NZBGet's JSON-RPC goes through `nzbCall` in `nzbget.go`.
 4. Add `pkg/server/register_<service>.go` and `pkg/server/tools_<service>.go` (input/output structs), and call the register function from `registerAll`. Server-level tests go in `register_<service>_test.go`, not `server_test.go`.

@@ -27,6 +27,7 @@ var specs = map[string]arr.ServiceSpec{
 	"nzbget":      arr.NZBGetSpec,
 	"maintainerr": arr.MaintainerrSpec,
 	"seerr":       arr.SeerrSpec,
+	"jellyfin":    arr.JellyfinSpec,
 }
 
 func main() {

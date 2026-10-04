@@ -210,3 +210,37 @@ services:
 		t.Fatalf("Load returned error: %v", err)
 	}
 }
+
+// Jellyfin authenticates with an API key, so the generic env fallback and the
+// default credential kind must already give it an instance.
+func TestJellyfinIsKnownAndBuildsFromEnv(t *testing.T) {
+	t.Setenv("JELLYFIN_URL", "http://j:8096")
+	t.Setenv("JELLYFIN_API_KEY", "jf-key-from-env")
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	inst, err := c.Resolve("jellyfin", "")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if inst.URL != "http://j:8096" || inst.APIKey != "jf-key-from-env" {
+		t.Errorf("instance = %+v, want url and api key from the environment", inst)
+	}
+	if got := CredentialKindFor("jellyfin"); got != CredentialAPIKey {
+		t.Errorf("CredentialKindFor(jellyfin) = %v, want CredentialAPIKey", got)
+	}
+}
+
+func TestJellyfinInstanceNeedsAnAPIKeyInYAML(t *testing.T) {
+	p := writeCfg(t, `
+services:
+  jellyfin:
+    - name: main
+      url: http://j:8096
+`)
+	if _, err := Load(p); err == nil {
+		t.Fatal("expected an error for a jellyfin instance without an apiKey")
+	}
+}
