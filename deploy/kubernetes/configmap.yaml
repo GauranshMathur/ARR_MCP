@@ -82,3 +82,9 @@ data:
         - name: main
           url: http://jellyfin.jelly.svc.cluster.local:8096
           apiKey: ${JELLYFIN_API_KEY}
+
+      # Jellystat takes an API key (Settings -> API Keys), sent as X-Api-Token.
+      jellystat:
+        - name: main
+          url: http://jellystat.jelly.svc.cluster.local:3000
+          apiKey: ${JELLYSTAT_API_KEY}

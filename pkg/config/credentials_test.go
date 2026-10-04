@@ -244,3 +244,23 @@ services:
 		t.Fatal("expected an error for a jellyfin instance without an apiKey")
 	}
 }
+
+func TestJellystatIsKnownAndBuildsFromEnv(t *testing.T) {
+	t.Setenv("JELLYSTAT_URL", "http://js:3000")
+	t.Setenv("JELLYSTAT_API_KEY", "js-key-from-env")
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	inst, err := c.Resolve("jellystat", "")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if inst.URL != "http://js:3000" || inst.APIKey != "js-key-from-env" {
+		t.Errorf("instance = %+v, want url and api key from the environment", inst)
+	}
+	if got := CredentialKindFor("jellystat"); got != CredentialAPIKey {
+		t.Errorf("CredentialKindFor(jellystat) = %v, want CredentialAPIKey", got)
+	}
+}
