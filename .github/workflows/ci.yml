@@ -14,6 +14,8 @@ on:
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
+  # The Release workflow dispatches this on the release PR's branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
