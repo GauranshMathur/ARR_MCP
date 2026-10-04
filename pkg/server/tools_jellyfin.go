@@ -11,7 +11,7 @@ type JellyfinSearchItemsArgs struct {
 	IncludeItemTypes string `json:"includeItemTypes,omitempty" jsonschema:"comma-separated item types, e.g. Movie, Series, Episode"`
 	ParentID         string `json:"parentId,omitempty" jsonschema:"only items under this id, e.g. a library's itemId from jellyfin_list_libraries"`
 	Recursive        *bool  `json:"recursive,omitempty" jsonschema:"search below folders and seasons too; defaults to true"`
-	Limit            int    `json:"limit,omitempty" jsonschema:"items per page; defaults to 25"`
+	Limit            int    `json:"limit,omitempty" jsonschema:"items per page; defaults to 25, at most 100"`
 	StartIndex       int    `json:"startIndex,omitempty" jsonschema:"offset of the first item, for paging; defaults to 0"`
 }
 
@@ -25,7 +25,7 @@ type JellyfinItemArgs struct {
 // JellyfinActivityArgs pages jellyfin_activity_log.
 type JellyfinActivityArgs struct {
 	InstanceArg
-	Limit      int `json:"limit,omitempty" jsonschema:"entries per page, newest first; defaults to 25"`
+	Limit      int `json:"limit,omitempty" jsonschema:"entries per page, newest first; defaults to 25, at most 100"`
 	StartIndex int `json:"startIndex,omitempty" jsonschema:"offset of the first entry, for paging; defaults to 0"`
 }
 

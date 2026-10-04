@@ -19,15 +19,36 @@ const (
 	ticksPerMinute = 60 * ticksPerSecond
 )
 
-// jellyfinIDPattern matches the ids Jellyfin issues (32 hex digits, with or
-// without dashes). It is loose on purpose; its job is to keep path separators
-// and dots out of the URL path an id is spliced into, so a model-supplied id
-// can never reach a different endpoint.
-var jellyfinIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
+// jellyfinIDPattern matches the ids Jellyfin issues: a GUID as 32 hex digits
+// (what every id on a 12.0 server looks like) or in its dashed form. Anything
+// else, a path traversal above all, must never reach the URL an id is spliced
+// into, or a model-supplied id could turn one tool into a call to another
+// endpoint.
+var jellyfinIDPattern = regexp.MustCompile(
+	`^(?:[0-9A-Fa-f]{32}|[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})$`)
+
+// Page sizes for the two listings Jellyfin would otherwise return whole: a
+// library is thousands of items and the activity log tens of thousands. The cap
+// is what keeps one call from filling the model's context.
+const (
+	jellyfinDefaultLimit = 25
+	jellyfinMaxLimit     = 100
+)
+
+// jellyfinLimit applies the default to an unset limit and clamps a large one.
+func jellyfinLimit(n int) int {
+	switch {
+	case n <= 0:
+		return jellyfinDefaultLimit
+	case n > jellyfinMaxLimit:
+		return jellyfinMaxLimit
+	}
+	return n
+}
 
 func jellyfinCheckID(what, id string) error {
 	if !jellyfinIDPattern.MatchString(id) {
-		return fmt.Errorf("invalid jellyfin %s %q: expected the id Jellyfin reports", what, id)
+		return fmt.Errorf("invalid jellyfin %s %q: expected a Jellyfin id (32 hex digits)", what, id)
 	}
 	return nil
 }
@@ -233,9 +254,7 @@ func JellyfinSearchItems(ctx context.Context, c *Client, q JellyfinItemQuery) (J
 	if q.IncludeItemTypes != "" {
 		query["includeItemTypes"] = q.IncludeItemTypes
 	}
-	if q.Limit > 0 {
-		query["limit"] = itoa(q.Limit)
-	}
+	query["limit"] = itoa(jellyfinLimit(q.Limit))
 	if q.StartIndex > 0 {
 		query["startIndex"] = itoa(q.StartIndex)
 	}
@@ -410,7 +429,6 @@ type JellyfinTask struct {
 	Name            string   `json:"name"`
 	Key             string   `json:"key"`
 	Category        string   `json:"category,omitempty"`
-	Description     string   `json:"description,omitempty"`
 	State           string   `json:"state" jsonschema:"Idle, Running, Cancelling"`
 	ProgressPercent *float64 `json:"progressPercent,omitempty" jsonschema:"only while running"`
 	LastStatus      string   `json:"lastStatus,omitempty" jsonschema:"Completed, Failed, Cancelled or Aborted; absent if it has never run"`
@@ -418,14 +436,15 @@ type JellyfinTask struct {
 }
 
 // JellyfinListTasks reads /ScheduledTasks. Triggers are left out: the schedule
-// is configuration, not state, and renders as raw tick counts.
+// is configuration, not state, and renders as raw tick counts. Descriptions are
+// left out too; with 58 tasks they were most of the payload and the name says
+// what a task does.
 func JellyfinListTasks(ctx context.Context, c *Client) ([]JellyfinTask, error) {
 	raw, err := GetJSON[[]struct {
 		ID                        string   `json:"Id"`
 		Name                      string   `json:"Name"`
 		Key                       string   `json:"Key"`
 		Category                  string   `json:"Category"`
-		Description               string   `json:"Description"`
 		State                     string   `json:"State"`
 		CurrentProgressPercentage *float64 `json:"CurrentProgressPercentage"`
 		LastExecutionResult       *struct {
@@ -439,7 +458,7 @@ func JellyfinListTasks(ctx context.Context, c *Client) ([]JellyfinTask, error) {
 	out := make([]JellyfinTask, 0, len(raw))
 	for _, r := range raw {
 		t := JellyfinTask{
-			ID: r.ID, Name: r.Name, Key: r.Key, Category: r.Category, Description: r.Description,
+			ID: r.ID, Name: r.Name, Key: r.Key, Category: r.Category,
 			State: r.State, ProgressPercent: r.CurrentProgressPercentage,
 		}
 		if res := r.LastExecutionResult; res != nil {
@@ -471,10 +490,7 @@ type JellyfinActivityPage struct {
 
 // JellyfinActivityLog reads /System/ActivityLog/Entries.
 func JellyfinActivityLog(ctx context.Context, c *Client, limit, startIndex int) (JellyfinActivityPage, error) {
-	q := Query{}
-	if limit > 0 {
-		q["limit"] = itoa(limit)
-	}
+	q := Query{"limit": itoa(jellyfinLimit(limit))}
 	if startIndex > 0 {
 		q["startIndex"] = itoa(startIndex)
 	}

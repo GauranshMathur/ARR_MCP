@@ -549,7 +549,11 @@ What Jellyfin itself knows, as opposed to what the \*arr apps acquired: librarie
 state, items as Jellyfin indexes them, who is connected and playing, users, scheduled tasks
 and the activity log. Output is trimmed hard; a Jellyfin item has over a hundred fields.
 Names set by users and devices are passed through verbatim and flagged in the output schema
-as data, not instructions. See [Scope](#jellyfin) for what is left out.
+as data, not instructions. The activity log deserves particular care: a failed login is
+recorded as `Failed login attempt from <username>` with whatever name the caller typed, so
+anyone who can reach the server's login page can put text in front of the model. The default
+`confirm` permission mode is the guard against acting on it. Lists are capped at 100 entries
+per call. See [Scope](#jellyfin) for what is left out.
 
 | Tool | Access |
 |---|---|
@@ -563,7 +567,7 @@ as data, not instructions. See [Scope](#jellyfin) for what is left out.
 | `jellyfin_activity_log` — newest first, paged | read |
 | `jellyfin_scan_library` — every library, in the background | write |
 | `jellyfin_refresh_item` — one item or library; never replaces existing metadata | write |
-| `jellyfin_run_task` — start a scheduled task now | write |
+| `jellyfin_run_task` — start a scheduled task now; some tasks (clean cache, logs, activity log) delete data | destructive |
 
 ### What responses contain
 
