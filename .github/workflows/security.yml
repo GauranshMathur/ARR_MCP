@@ -10,6 +10,8 @@ on:
   schedule:
     # Weekly, so newly disclosed vulnerabilities surface without a code change.
     - cron: "17 4 * * 1"
+  # The Release workflow dispatches this on the release PR's branch.
+  workflow_dispatch:
 
 permissions:
   contents: read

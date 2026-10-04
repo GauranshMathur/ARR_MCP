@@ -18,6 +18,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     outputs:
       released: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
@@ -30,6 +31,18 @@ jobs:
         with:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # A PR opened with GITHUB_TOKEN gets its pull_request runs held for
+      # approval, so its checks never start. workflow_dispatch is exempt from
+      # that rule, and a run on the PR's branch reports on the PR.
+      - name: Run checks on the release PR
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          gh workflow run security.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
 
   publish:
     name: Build, scan, publish
