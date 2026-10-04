@@ -75,3 +75,10 @@ data:
         - name: main
           url: http://seerr.media.svc.cluster.local:5055
           apiKey: ${SEERR_API_KEY}
+
+      # Jellyfin takes an API key (Dashboard -> API Keys). The Service lives in
+      # its own namespace, so the address is not under .media.
+      jellyfin:
+        - name: main
+          url: http://jellyfin.jelly.svc.cluster.local:8096
+          apiKey: ${JELLYFIN_API_KEY}

@@ -1,11 +1,11 @@
 # ARR-MCP
 
-An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr and Seerr — including **multiple instances of each**.
+An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr and Jellyfin — including **multiple instances of each**.
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **288 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr and Seerr — what you would otherwise do by clicking through each web UI
+- **299 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr and Jellyfin — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -119,6 +119,10 @@ Maintainerr (default port 6246) has no API authentication at all, so it takes on
 `url`. Anyone who can reach its port has full control of it, so keep it off untrusted
 networks.
 
+Jellyfin (default port 8096) takes an API key: Dashboard → **API Keys** → add one. It is
+sent as `Authorization: MediaBrowser Token="<key>"`, the form Jellyfin 12 requires; the
+older `X-Emby-Token` header and `api_key` query parameter are rejected.
+
 Every one of these is a *full-access* credential for that application. ARR-MCP never
 needs more than one credential per instance, and the [permission model](#permissions) is
 what narrows down what the model can actually do with it.
@@ -162,6 +166,8 @@ NZBGET_PASSWORD=...
 MAINTAINERR_URL=http://192.168.10.25:6246
 SEERR_URL=http://192.168.10.26:5055
 SEERR_API_KEY=...
+JELLYFIN_URL=http://192.168.10.27:8096
+JELLYFIN_API_KEY=...
 ```
 
 A service is configured only when **all** its variables are set; setting just some of
@@ -197,14 +203,14 @@ sonarr_search_series{query: "Severance", instance: "anime"}
 Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
 
 - Every instance needs a `name`, a `url` and its credential: an `apiKey` for the \*arr
-  services, Bazarr and Seerr, a `username` and `password` for `qbittorrent` and `nzbget`, and
+  services, Bazarr, Seerr and Jellyfin, a `username` and `password` for `qbittorrent` and `nzbget`, and
   nothing for `maintainerr`, which has no authentication. Supplying the wrong kind is an
   error, not a silent fallback.
 - Instance names must be unique within a service, and at most one may be `default`.
 - With several instances and no `default`, a tool call that omits `instance` fails with a
   message listing the valid names — it does not silently pick the first one.
-- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget`, `maintainerr`
-  and `seerr` are accepted;
+- Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget`, `maintainerr`,
+  `seerr` and `jellyfin` are accepted;
   anything else is rejected rather than ignored, so a typo like `sonar:` is caught
   immediately.
 
@@ -537,6 +543,28 @@ into a title. Requests made through these tools are filed as the administrator u
 | `seerr_comment_issue`, `seerr_set_issue_status` — resolve or reopen | write |
 | `seerr_delete_request` | destructive |
 
+### Jellyfin (11)
+
+What Jellyfin itself knows, as opposed to what the \*arr apps acquired: libraries and scan
+state, items as Jellyfin indexes them, who is connected and playing, users, scheduled tasks
+and the activity log. Output is trimmed hard; a Jellyfin item has over a hundred fields.
+Names set by users and devices are passed through verbatim and flagged in the output schema
+as data, not instructions. See [Scope](#jellyfin) for what is left out.
+
+| Tool | Access |
+|---|---|
+| `jellyfin_system_info` — version, pending restart or update | read |
+| `jellyfin_list_libraries` — folders and scan state | read |
+| `jellyfin_search_items` — by name, type or library; paged, 25 by default | read |
+| `jellyfin_get_item` — overview, genres, provider ids and one user's play state | read |
+| `jellyfin_list_sessions` — who is connected and what is playing | read |
+| `jellyfin_list_users` — no policy or configuration | read |
+| `jellyfin_list_tasks` — state and last result | read |
+| `jellyfin_activity_log` — newest first, paged | read |
+| `jellyfin_scan_library` — every library, in the background | write |
+| `jellyfin_refresh_item` — one item or library; never replaces existing metadata | write |
+| `jellyfin_run_task` — start a scheduled task now | write |
+
 ### What responses contain
 
 Upstream payloads are far too large to return as they arrive — a single Sonarr
@@ -706,12 +734,23 @@ reads like an instruction. The tool schemas mark that text as data, but the defa
 `seerr_approve_request` or `seerr_delete_request`. Do not run a Seerr instance in `full`
 mode if untrusted users can file issues.
 
-### Not planned: media servers (Jellyfin, Plex)
+### Jellyfin
 
-Neither is \*arr-named, and neither speaks the \*arr API contract — Plex uses its own
-token scheme and XML-flavoured API. Supporting either means a bespoke client with its own
-auth handling, response shapes and tests, for a capability that overlaps heavily with what
-the \*arr tools already expose.
+Jellyfin is not \*arr-named and its API is not the \*arr contract, but it needed one
+addition to the shared transport rather than a client of its own: the key goes in the
+`Authorization` header wrapped as `MediaBrowser Token="<key>"`, which is
+`ServiceSpec.AuthHeaderFormat`. It is still `AuthHeaderKey`. Two quirks of 12.0: the
+connectivity check is `/System/Info`, because `/System/Info/Public` answers without a key,
+and `GET /Items/{id}` rejects a request with no user, so `jellyfin_get_item` reads as the
+first enabled user unless told otherwise. Left out on purpose: user and permission
+management, playback control, item deletion (Maintainerr owns that) and server settings.
+
+### Not planned: Plex
+
+Plex is not \*arr-named and does not speak the \*arr API contract: it uses its own token
+scheme and an XML-flavoured API. Supporting it means a bespoke client with its own auth
+handling, response shapes and tests, for a capability that overlaps heavily with what the
+\*arr tools and Jellyfin already expose.
 
 ### Download clients (qBittorrent, NZBGet)
 
@@ -773,7 +812,8 @@ var BazarrSpec = ServiceSpec{
 }
 ```
 
-Four auth schemes exist: `AuthHeaderKey` (the \*arr apps, Bazarr and Seerr), `AuthBasic`
+Four auth schemes exist: `AuthHeaderKey` (the \*arr apps, Bazarr, Seerr and Jellyfin, the last of which
+sets `AuthHeaderFormat` to wrap the key as `MediaBrowser Token="%s"`), `AuthBasic`
 (NZBGet), `AuthSession` (qBittorrent's form login, with the session cookie cached per
 instance and refreshed once on a 403) and `AuthNone` (Maintainerr).
 
