@@ -317,6 +317,23 @@ func TestMaintainerrCreateRuleSendsAnExplicitActiveGroup(t *testing.T) {
 	}
 }
 
+// Names are looked up by exact match after the create, so the name that is
+// checked must be the name that is sent.
+func TestMaintainerrCreateRuleSendsTheTrimmedName(t *testing.T) {
+	c, paths, bodies := maintainerrCreateServer(t, createRoutes(), maintainerrRuleListBefore, maintainerrRuleListAfter)
+	in := validNewRule()
+	in.Name = "  Old unwatched \n"
+
+	if _, err := MaintainerrCreateRule(context.Background(), c, in); err != nil {
+		t.Fatalf("MaintainerrCreateRule: %v", err)
+	}
+	for i, p := range *paths {
+		if p == "POST /api/rules" && !strings.Contains((*bodies)[i], `"name":"Old unwatched"`) {
+			t.Errorf("POST body = %s, want the trimmed name", (*bodies)[i])
+		}
+	}
+}
+
 func TestMaintainerrCreateRuleMapsShowServersToSonarr(t *testing.T) {
 	routes := createRoutes()
 	routes["GET /api/rules/9"] = `{"id":9,"name":"Old unwatched","libraryId":"lib-s","collectionId":9,"dataType":"show",
@@ -763,6 +780,108 @@ func TestMaintainerrUpdateRefusesGroupsWithNoReadableRulesField(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// storedGroupWithCollection is storedGroup with its collection settings
+// changed; a nil value removes the key.
+func storedGroupWithCollection(t *testing.T, changes map[string]any) string {
+	t.Helper()
+	var group map[string]any
+	if err := json.Unmarshal([]byte(storedGroup), &group); err != nil {
+		t.Fatalf("unmarshal storedGroup: %v", err)
+	}
+	col := group["collection"].(map[string]any)
+	for k, v := range changes {
+		if v == nil {
+			delete(col, k)
+		} else {
+			col[k] = v
+		}
+	}
+	b, err := json.Marshal(group)
+	if err != nil {
+		t.Fatalf("marshal group: %v", err)
+	}
+	return string(b)
+}
+
+func sentPutCount(paths []string) int {
+	n := 0
+	for _, p := range paths {
+		if p == "PUT /api/rules" {
+			n++
+		}
+	}
+	return n
+}
+
+// Broadening the conditions of a collection that acts at once would delete
+// the newly matched media on the next run with no grace period, and this
+// edit is write-tier. A rename of the same group stays allowed.
+func TestMaintainerrUpdateRuleRefusesNewRulesOnAZeroGraceDeletingCollection(t *testing.T) {
+	routes := updateRoutes()
+	routes["GET /api/rules/2"] = storedGroupWithCollection(t, map[string]any{"deleteAfterDays": 0})
+	c, paths, _ := maintainerrRoutes(t, routes)
+	yaml := "rules: []"
+
+	_, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{RulesYAML: &yaml})
+	if err == nil {
+		t.Fatal("rulesYaml accepted on a collection with no grace period")
+	}
+	if !strings.Contains(err.Error(), "no grace period") || !strings.Contains(err.Error(), "maintainerr_set_deletion_policy") {
+		t.Errorf("error = %q, want it to name the missing grace period and maintainerr_set_deletion_policy", err)
+	}
+	if n := sentPutCount(*paths); n != 0 {
+		t.Errorf("%d PUTs sent", n)
+	}
+
+	name := "TV"
+	if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &name}); err != nil {
+		t.Errorf("rename refused: %v", err)
+	}
+}
+
+func TestMaintainerrUpdateRuleAllowsNewRulesWhereDeletionIsNotImmediate(t *testing.T) {
+	cases := map[string]map[string]any{
+		"deleteAfterDays null":   {"deleteAfterDays": nil},
+		"deleteAfterDays 1":      {"deleteAfterDays": 1},
+		"DO_NOTHING with 0 days": {"deleteAfterDays": 0, "arrAction": 4},
+	}
+	for name, changes := range cases {
+		t.Run(name, func(t *testing.T) {
+			routes := updateRoutes()
+			routes["GET /api/rules/2"] = storedGroupWithCollection(t, changes)
+			c, paths, _ := maintainerrRoutes(t, routes)
+			yaml := "rules: []"
+
+			if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{RulesYAML: &yaml}); err != nil {
+				t.Fatalf("MaintainerrUpdateRule: %v", err)
+			}
+			if n := sentPutCount(*paths); n != 1 {
+				t.Errorf("%d PUTs sent, want 1", n)
+			}
+		})
+	}
+}
+
+// A GET without collection.arrAction would leave nothing to hoist, and PUT
+// resets an unsent arrAction to DELETE.
+func TestMaintainerrUpdateRefusesGroupsWithNoReadableArrAction(t *testing.T) {
+	routes := updateRoutes()
+	routes["GET /api/rules/2"] = storedGroupWithCollection(t, map[string]any{"arrAction": nil})
+	c, paths, _ := maintainerrRoutes(t, routes)
+	name := "TV"
+
+	_, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{Name: &name})
+	if err == nil {
+		t.Fatal("update proceeded with no arrAction to send back")
+	}
+	if !strings.Contains(err.Error(), "arrAction") {
+		t.Errorf("error = %q, want it to name arrAction", err)
+	}
+	if n := sentPutCount(*paths); n != 0 {
+		t.Errorf("%d PUTs sent", n)
 	}
 }
 

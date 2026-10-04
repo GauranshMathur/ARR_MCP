@@ -287,7 +287,8 @@ type MaintainerrNewRule struct {
 // call, and an immediate action belongs to maintainerr_set_deletion_policy,
 // which asks first.
 func MaintainerrCreateRule(ctx context.Context, c *Client, in MaintainerrNewRule) (MaintainerrRuleDetail, error) {
-	if strings.TrimSpace(in.Name) == "" {
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
 		return MaintainerrRuleDetail{}, fmt.Errorf("name is required")
 	}
 	action, err := maintainerrArrActionIndex(in.ArrAction)
@@ -490,6 +491,11 @@ func maintainerrUpdateRule(ctx context.Context, c *Client, id int, edit func(gro
 			group[k] = v
 		}
 	}
+	// PUT resets an unsent arrAction to DELETE, so a group whose action cannot
+	// be read back must not be written.
+	if _, ok := group["arrAction"].(float64); !ok {
+		return MaintainerrRuleDetail{}, fmt.Errorf("rule group %d has no readable arrAction; nothing was changed", id)
+	}
 	rules, err := maintainerrStoredRules(group["rules"])
 	if err != nil {
 		return MaintainerrRuleDetail{}, err
@@ -541,7 +547,17 @@ func MaintainerrUpdateRule(ctx context.Context, c *Client, id int, p Maintainerr
 	if p.Name != nil && strings.TrimSpace(*p.Name) == "" {
 		return MaintainerrRuleDetail{}, fmt.Errorf("name must not be blank")
 	}
-	return maintainerrUpdateRule(ctx, c, id, func(group, _ map[string]any) error {
+	return maintainerrUpdateRule(ctx, c, id, func(group, col map[string]any) error {
+		// New conditions add items that the action then takes after the grace
+		// period, and this call is write-tier. With no grace period (a real 0,
+		// not null, which means never) that is an immediate deletion, which
+		// belongs to maintainerr_set_deletion_policy.
+		if days, ok := col["deleteAfterDays"].(float64); p.RulesYAML != nil && ok && days == 0 {
+			if action, _ := col["arrAction"].(float64); maintainerrArrAction(int(action)) != "DO_NOTHING" {
+				return fmt.Errorf("rule group %d acts with no grace period; raise deleteAfterDays with "+
+					"maintainerr_set_deletion_policy, or set its arrAction to DO_NOTHING, before changing its conditions", id)
+			}
+		}
 		if p.Name != nil {
 			group["name"] = *p.Name
 		}
