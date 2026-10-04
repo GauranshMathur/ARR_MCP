@@ -281,3 +281,57 @@ func TestLoginFailureReportsStatus(t *testing.T) {
 		t.Errorf("error %q does not say the login failed", se)
 	}
 }
+
+// Jellyfin wants the key inside a scheme, not as a bare header value, and the
+// value must be exactly this: a stray space or quote is a 401.
+func TestAuthHeaderFormatWrapsTheKey(t *testing.T) {
+	srv, got := fakeService(t, 200, `{}`)
+	c := NewClient(srv.URL, JellyfinSpec, Credentials{APIKey: "abc123"})
+
+	if _, err := c.Get(context.Background(), "/System/Info"); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if v := got.header.Get("Authorization"); v != `MediaBrowser Token="abc123"` {
+		t.Errorf("Authorization = %q, want %q", v, `MediaBrowser Token="abc123"`)
+	}
+	if v := got.header.Get("X-Api-Key"); v != "" {
+		t.Errorf("X-Api-Key = %q, want unset", v)
+	}
+}
+
+// Every service without a format must keep sending the raw key.
+func TestAuthHeaderWithoutFormatSendsRawKey(t *testing.T) {
+	srv, got := fakeService(t, 200, `{}`)
+	spec := ServiceSpec{Name: "x", Auth: AuthHeaderKey, AuthHeader: "Authorization"}
+	c := NewClient(srv.URL, spec, Credentials{APIKey: "abc123"})
+
+	if _, err := c.Get(context.Background(), "/y"); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if v := got.header.Get("Authorization"); v != "abc123" {
+		t.Errorf("Authorization = %q, want the raw key", v)
+	}
+}
+
+// A service that echoes the Authorization header back in an error must not
+// carry the key into the message, even though the key now sits inside a scheme.
+func TestFormattedAuthHeaderKeyIsRedactedFromErrors(t *testing.T) {
+	const key = "super-secret-key"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte("bad header " + r.Header.Get("Authorization")))
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(srv.URL, JellyfinSpec, Credentials{APIKey: key})
+
+	_, err := c.Get(context.Background(), "/System/Info")
+	if err == nil {
+		t.Fatal("expected an error for 500 response, got nil")
+	}
+	if strings.Contains(err.Error(), key) {
+		t.Errorf("error leaks the API key: %q", err)
+	}
+	if !strings.Contains(err.Error(), "MediaBrowser Token=") {
+		t.Errorf("error %q lost the surrounding text", err)
+	}
+}
