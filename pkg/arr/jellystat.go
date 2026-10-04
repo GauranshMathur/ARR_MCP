@@ -233,6 +233,15 @@ func JellystatPlaybackHistory(ctx context.Context, c *Client, q JellystatHistory
 	if set > 1 {
 		return JellystatHistoryPage{}, fmt.Errorf("give at most one of userId, itemId and libraryId")
 	}
+	// Jellystat falls back to its default order for a sort it does not know,
+	// which would look like success. These are the fields all four history
+	// routes share.
+	if q.Sort != "" {
+		if err := seerrOneOf("sort", q.Sort, "ActivityDateInserted", "PlaybackDuration", "UserName",
+			"NowPlayingItemName", "Client", "DeviceName", "PlayMethod"); err != nil {
+			return JellystatHistoryPage{}, err
+		}
+	}
 
 	query := jellystatPagedQuery(q.Limit, q.Page, q.Search, q.Sort, q.Desc)
 	method := http.MethodGet
@@ -466,6 +475,11 @@ type JellystatLibraryItemsQuery struct {
 func JellystatLibraryItems(ctx context.Context, c *Client, q JellystatLibraryItemsQuery) (JellystatItemPage, error) {
 	if err := jellyfinCheckID("libraryId", q.LibraryID); err != nil {
 		return JellystatItemPage{}, err
+	}
+	if q.Sort != "" {
+		if err := seerrOneOf("sort", q.Sort, "Date", "Views", "WatchTime", "Size", "Title"); err != nil {
+			return JellystatItemPage{}, err
+		}
 	}
 	query := jellystatPagedQuery(q.Limit, q.Page, q.Search, q.Sort, q.Desc)
 	data, err := c.do(ctx, http.MethodPost, "/stats/getLibraryItemsWithStats", map[string]string{"libraryid": q.LibraryID}, query)

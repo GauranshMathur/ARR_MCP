@@ -226,6 +226,31 @@ func TestJellystatPlaybackHistoryRejectsBadIDsBeforeAnyRequest(t *testing.T) {
 	}
 }
 
+// Jellystat silently falls back to its default order for a sort it does not
+// know, so an unknown value must be refused here rather than sent on.
+func TestJellystatRejectsUnknownSortBeforeAnyRequest(t *testing.T) {
+	for _, sortBy := range []string{"a.UserName; DROP TABLE jf_users", "Views", "RemoteEndPoint"} {
+		srv, got := fakeService(t, 200, historyBody(historyRow))
+		_, err := JellystatPlaybackHistory(context.Background(), jellystatClient(srv.URL), JellystatHistoryQuery{Sort: sortBy})
+		if err == nil || !strings.Contains(err.Error(), "ActivityDateInserted") {
+			t.Errorf("history sort %q: err = %v, want one naming the valid values", sortBy, err)
+		}
+		if len(got.paths) != 0 {
+			t.Errorf("history sort %q: request reached the server: %v", sortBy, got.paths)
+		}
+	}
+	for _, sortBy := range []string{"DateCreated desc", "UserName"} {
+		srv, got := fakeService(t, 200, `{"results":[]}`)
+		_, err := JellystatLibraryItems(context.Background(), jellystatClient(srv.URL), JellystatLibraryItemsQuery{LibraryID: jsLib, Sort: sortBy})
+		if err == nil || !strings.Contains(err.Error(), "WatchTime") {
+			t.Errorf("library items sort %q: err = %v, want one naming the valid values", sortBy, err)
+		}
+		if len(got.paths) != 0 {
+			t.Errorf("library items sort %q: request reached the server: %v", sortBy, got.paths)
+		}
+	}
+}
+
 func TestJellystatMostViewedAndPopular(t *testing.T) {
 	cases := []struct {
 		name, path, rows string
