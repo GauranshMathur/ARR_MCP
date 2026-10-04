@@ -699,6 +699,13 @@ management, every `/settings` write, editing a request (`PUT /request/{id}`), an
 `DELETE /media/{id}` and `DELETE /media/{id}/file`, the second of which deletes files
 from disk; Maintainerr owns deletion.
 
+Seerr is multi-user, unlike the \*arr apps. Issue comments and display names are written
+by Seerr's own users and reach the model verbatim, so a user could write a comment that
+reads like an instruction. The tool schemas mark that text as data, but the default
+`confirm` permission mode is what actually stands between such text and
+`seerr_approve_request` or `seerr_delete_request`. Do not run a Seerr instance in `full`
+mode if untrusted users can file issues.
+
 ### Not planned: media servers (Jellyfin, Plex)
 
 Neither is \*arr-named, and neither speaks the \*arr API contract — Plex uses its own
