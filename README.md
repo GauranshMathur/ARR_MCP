@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **260 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — what you would otherwise do by clicking through each web UI
+- **271 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet and Maintainerr — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -480,12 +480,13 @@ Usenet download client, spoken to over its JSON-RPC API with basic auth
 | `nzbget_delete_items` — to history by default; `final` discards permanently | destructive |
 | `nzbget_delete_history_items` — hides by default; `final` removes permanently | destructive |
 
-### Maintainerr (14)
+### Maintainerr (25)
 
 Rule-driven library cleanup. A rule group fills a collection; each item in it is acted
 on (usually deleted from disk through Sonarr or Radarr) `deleteAfterDays` after it
-entered. These tools let you see what is about to go and keep or delay it. Nothing here
-deletes media: see [Scope](#maintainerr) for what is left out.
+entered. These tools show what is about to go, keep or delay it, and create and edit
+the rule groups themselves, written in Maintainerr's own YAML. Anything that brings a
+deletion closer is destructive-tier. See [Scope](#maintainerr) for what is left out.
 
 | Tool | Access |
 |---|---|
@@ -499,6 +500,16 @@ deletes media: see [Scope](#maintainerr) for what is left out.
 | `maintainerr_add_exclusion` — one collection, or every rule group | write |
 | `maintainerr_postpone_deletion` — by N days, or restart the grace period | write |
 | `maintainerr_process_overlays` | write |
+| `maintainerr_list_libraries`, `maintainerr_list_arr_servers` — ids a new rule group needs; API keys are never returned | read |
+| `maintainerr_list_rule_properties` — the `App.property` names rulesYaml uses | read |
+| `maintainerr_test_rule` — dry-run a rule group against one item | read |
+| `maintainerr_create_rule` — active, with an explicit action and a grace period of at least a day | write |
+| `maintainerr_update_rule` — name, description, rulesYaml, schedule | write |
+| `maintainerr_update_collection` — overlays and visibility | write |
+| `maintainerr_remove_from_collection` | write |
+| `maintainerr_set_deletion_policy` — arrAction, grace period, active | destructive |
+| `maintainerr_add_to_collection` — schedules the item for the collection's action | destructive |
+| `maintainerr_delete_rule` — also removes the media server collection | destructive |
 | `maintainerr_remove_exclusion` — the item becomes deletable again | destructive |
 
 ### What responses contain
@@ -646,10 +657,12 @@ Cleanuparr and Notifiarr.
 
 Maintainerr is not \*arr-named, but it drives Sonarr and Radarr and serves a plain JSON
 `/api` with no authentication, so it needed no transport change: `AuthNone` already
-existed. The tools stop at keeping and delaying media. Left out on purpose: running
-collection handling (`/collections/handle`, which deletes due media immediately), editing
-or deleting rules and collections, and everything under `/api/settings`, which returns
-every stored credential in plaintext.
+existed. Rule groups are created and edited through Maintainerr's YAML encode and decode
+endpoints, so the model never handles its numeric rule encoding, and every edit reads
+the whole group back and writes it whole, because Maintainerr's update resets fields it
+is not sent. Left out on purpose: running collection handling (`/collections/handle`,
+which deletes due media immediately), collection-only groups without rules, and every
+write under `/api/settings`, which returns every stored credential in plaintext.
 
 ### Not planned: media servers and request managers (Jellyfin, Overseerr, Plex)
 

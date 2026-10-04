@@ -7,8 +7,8 @@ import (
 )
 
 // registerMaintainerr adds the Maintainerr tools. The surface stops short of
-// anything that deletes media now: collection handling, rule and collection
-// edits, and /api/settings, which returns every stored credential, are left out.
+// anything that deletes media now: collection handling and /api/settings,
+// which returns every stored credential, are left out.
 func registerMaintainerr(s *Server) {
 	const svc = "maintainerr"
 	spec := arr.MaintainerrSpec
@@ -99,6 +99,128 @@ func registerMaintainerr(s *Server) {
 		access: AccessRead,
 	}, func(ctx context.Context, c *arr.Client, in MediaServerIDArgs) (arr.MaintainerrItemStatus, error) {
 		return arr.MaintainerrMediaStatus(ctx, c, in.MediaServerID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "maintainerr_list_libraries",
+		description: "List the media server libraries a Maintainerr rule group can target, with the libraryId maintainerr_create_rule needs.",
+		access:      AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (MaintainerrLibraryList, error) {
+		libs, err := arr.MaintainerrListLibraries(ctx, c)
+		return MaintainerrLibraryList{Libraries: libs, Count: len(libs)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_list_arr_servers",
+		description: "List the Radarr and Sonarr servers Maintainerr acts through. A movie rule group " +
+			"needs a radarr id and a show rule group a sonarr id; ids repeat across the two kinds.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (MaintainerrArrServerList, error) {
+		servers, err := arr.MaintainerrListArrServers(ctx, c)
+		return MaintainerrArrServerList{Servers: servers, Count: len(servers)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_list_rule_properties",
+		description: "List the properties Maintainerr rule conditions can compare, as the App.property " +
+			"names rulesYaml uses, with each one's value type and allowed comparisons. Filter by application " +
+			"to keep the list short. maintainerr_get_rule shows complete rulesYaml examples.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in RulePropertiesArgs) (MaintainerrRulePropertyList, error) {
+		props, err := arr.MaintainerrListRuleProperties(ctx, c, in.Application)
+		return MaintainerrRulePropertyList{Properties: props, Count: len(props)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_test_rule",
+		description: "Dry-run a saved Maintainerr rule group against one media item: whether it would " +
+			"enter the collection, and each condition's values and result. Changes nothing.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in TestRuleArgs) (arr.MaintainerrRuleTest, error) {
+		return arr.MaintainerrTestRule(ctx, c, in.RuleGroupID, in.MediaServerID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_create_rule",
+		description: "Create an active Maintainerr rule group and its collection. Items the rules match " +
+			"enter the collection on the next rule run, and arrAction runs deleteAfterDays after that. " +
+			"Check a known title with maintainerr_test_rule afterwards.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in CreateRuleArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrCreateRule(ctx, c, arr.MaintainerrNewRule{
+			Name: in.Name, Description: in.Description, LibraryID: in.LibraryID,
+			ArrAction: in.ArrAction, DeleteAfterDays: in.DeleteAfterDays, ArrServerID: in.ArrServerID,
+			RulesYAML: in.RulesYAML, OverlayEnabled: in.OverlayEnabled,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_update_rule",
+		description: "Change a Maintainerr rule group's name, description, conditions (rulesYaml replaces " +
+			"all of them) or schedule. Every other setting is kept. To change the action, grace period or " +
+			"active state, use maintainerr_set_deletion_policy. Broadening the conditions of a collection " +
+			"whose arrAction deletes files adds more items to it; check with maintainerr_test_rule first. " +
+			"Replacing the conditions is refused while the collection acts with no grace period " +
+			"(deleteAfterDays 0 and an action other than DO_NOTHING).",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in UpdateRuleArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrUpdateRule(ctx, c, in.ID, arr.MaintainerrRulePatch{
+			Name: in.Name, Description: in.Description, RulesYAML: in.RulesYAML,
+			RuleHandlerCronSchedule: in.RuleHandlerCronSchedule,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name:        "maintainerr_update_collection",
+		description: "Change a Maintainerr collection's overlay and visibility settings. Nothing here affects deletion.",
+		access:      AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in MaintainerrUpdateCollectionArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrUpdateCollection(ctx, c, in.CollectionID, arr.MaintainerrCollectionPatch{
+			OverlayEnabled: in.OverlayEnabled, VisibleOnHome: in.VisibleOnHome,
+			VisibleOnRecommended: in.VisibleOnRecommended,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_set_deletion_policy",
+		description: "Change what a Maintainerr collection does to its items (arrAction), after how many " +
+			"days, and whether it runs at all. A shorter grace period or a DELETE action applies to items " +
+			"already in the collection.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in DeletionPolicyArgs) (arr.MaintainerrRuleDetail, error) {
+		return arr.MaintainerrSetDeletionPolicy(ctx, c, in.CollectionID, arr.MaintainerrDeletionPolicy{
+			ArrAction: in.ArrAction, DeleteAfterDays: in.DeleteAfterDays, IsActive: in.IsActive,
+		})
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_delete_rule",
+		description: "Delete a Maintainerr rule group and its collection, including the collection on the " +
+			"media server. Items in it are no longer scheduled; nothing is deleted from disk.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in IDArgs) (Deleted, error) {
+		err := arr.MaintainerrDeleteRule(ctx, c, in.ID)
+		return Deleted{ID: in.ID, Deleted: err == nil}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_add_to_collection",
+		description: "Add a media item to a Maintainerr collection by hand. It is then scheduled for the " +
+			"collection's arrAction like any rule match, deleteAfterDays from now.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in CollectionMembershipArgs) (MembershipChanged, error) {
+		err := arr.MaintainerrSetCollectionMembership(ctx, c, in.CollectionID, in.MediaServerID, true)
+		return MembershipChanged{CollectionID: in.CollectionID, MediaServerID: in.MediaServerID, InCollection: err == nil}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "maintainerr_remove_from_collection",
+		description: "Remove a media item from a Maintainerr collection, cancelling its scheduled action. " +
+			"A rule may add it back on its next run; use maintainerr_add_exclusion to keep it out.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in CollectionMembershipArgs) (MembershipChanged, error) {
+		err := arr.MaintainerrSetCollectionMembership(ctx, c, in.CollectionID, in.MediaServerID, false)
+		return MembershipChanged{CollectionID: in.CollectionID, MediaServerID: in.MediaServerID, InCollection: err != nil}, err
 	})
 
 	register(s, svc, spec, toolMeta{

@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -20,19 +23,30 @@ var maintainerrReadTools = []string{
 	"maintainerr_rule_execution_status",
 	"maintainerr_overlay_status",
 	"maintainerr_media_status",
+	"maintainerr_list_libraries",
+	"maintainerr_list_arr_servers",
+	"maintainerr_list_rule_properties",
+	"maintainerr_test_rule",
 }
 
 // maintainerrWriteTools change Maintainerr state without deleting anything.
 var maintainerrWriteTools = []string{
+	"maintainerr_create_rule",
+	"maintainerr_update_rule",
+	"maintainerr_update_collection",
 	"maintainerr_execute_rules",
 	"maintainerr_add_exclusion",
 	"maintainerr_postpone_deletion",
 	"maintainerr_process_overlays",
+	"maintainerr_remove_from_collection",
 }
 
 // maintainerrDestructiveTools make media eligible for deletion from disk.
 var maintainerrDestructiveTools = []string{
 	"maintainerr_remove_exclusion",
+	"maintainerr_set_deletion_policy",
+	"maintainerr_delete_rule",
+	"maintainerr_add_to_collection",
 }
 
 // maintainerrCfg configures one Maintainerr instance against url. It carries
@@ -88,9 +102,9 @@ func TestMaintainerrMutatingToolsAreHiddenInReadOnlyMode(t *testing.T) {
 	}
 }
 
-// A confirm-destructive deployment must still stop to ask before an exclusion
-// is removed, which is how the tier reaches the user.
-func TestMaintainerrRemoveExclusionIsDestructive(t *testing.T) {
+// A confirm-destructive deployment must still stop to ask before any
+// destructive maintainerr tool runs, which is how the tier reaches the user.
+func TestMaintainerrDestructiveToolsAreAnnotated(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, maintainerrCfg(srv.URL, permsFull))
 
@@ -98,25 +112,56 @@ func TestMaintainerrRemoveExclusionIsDestructive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
+	seen := map[string]bool{}
 	for _, tool := range res.Tools {
-		if tool.Name != "maintainerr_remove_exclusion" {
+		if !has(maintainerrDestructiveTools, tool.Name) {
 			continue
 		}
+		seen[tool.Name] = true
 		if tool.Annotations == nil || tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
-			t.Errorf("maintainerr_remove_exclusion annotations = %+v, want destructive", tool.Annotations)
+			t.Errorf("%s annotations = %+v, want destructive", tool.Name, tool.Annotations)
 		}
-		return
 	}
-	t.Fatal("maintainerr_remove_exclusion not advertised")
+	for _, name := range maintainerrDestructiveTools {
+		if !seen[name] {
+			t.Errorf("%s not advertised", name)
+		}
+	}
+}
+
+// routedArr serves a fixed body per "METHOD /path", recording each request's
+// line and body. Maintainerr tools make several upstream calls per tool call,
+// which fakeArr's single body cannot answer.
+func routedArr(t *testing.T, routes map[string]string) (*httptest.Server, *[]string, *[]string) {
+	t.Helper()
+	var paths, bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Method + " " + r.URL.Path
+		paths = append(paths, key)
+		sent, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(sent))
+		body, ok := routes[key]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &paths, &bodies
 }
 
 // Rule groups carry notification webhooks with their tokens; the tool result
 // is where a projection mistake would finally leak them.
 func TestMaintainerrGetRuleToolOmitsNotificationWebhooks(t *testing.T) {
-	srv, _ := fakeArr(t, `{"id":1,"name":"Movies","collectionId":1,"isActive":true,
-	  "dataType":"movie","rules":[],
-	  "notifications":[{"agent":"discord","options":{"webhookUrl":"https://discord.com/api/webhooks/1/leaked-token"}}],
-	  "collection":{"id":1,"arrAction":0,"deleteAfterDays":14}}`)
+	srv, _, _ := routedArr(t, map[string]string{
+		"GET /api/rules/1": `{"id":1,"name":"Movies","collectionId":1,"isActive":true,
+		  "dataType":"movie","rules":[{"id":96,"ruleJson":"{\"action\":4}","section":0}],
+		  "notifications":[{"agent":"discord","options":{"webhookUrl":"https://discord.com/api/webhooks/1/leaked-token"}}],
+		  "collection":{"id":1,"arrAction":0,"deleteAfterDays":14}}`,
+		"POST /api/rules/yaml/encode": `{"code":1,"result":"mediaType: MOVIES"}`,
+	})
 	cs := connect(t, maintainerrCfg(srv.URL, permsFull))
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
@@ -135,6 +180,9 @@ func TestMaintainerrGetRuleToolOmitsNotificationWebhooks(t *testing.T) {
 	}
 	if !strings.Contains(body, `"arrAction":"DELETE"`) {
 		t.Errorf("result does not name the arrAction: %s", body)
+	}
+	if !strings.Contains(body, `"rulesYaml":"mediaType: MOVIES"`) {
+		t.Errorf("result does not carry rulesYaml: %s", body)
 	}
 }
 

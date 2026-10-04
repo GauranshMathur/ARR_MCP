@@ -3,6 +3,7 @@ package arr
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,14 +31,17 @@ var maintainerrArrActions = []string{
 	"CHANGE_QUALITY_PROFILE",
 }
 
-// maintainerrArrAction names an arrAction value, keeping unknown values visible
-// rather than guessing, since a newer Maintainerr may add actions.
-func maintainerrArrAction(v int) string {
-	if v >= 0 && v < len(maintainerrArrActions) {
-		return maintainerrArrActions[v]
+// maintainerrEnumName names a Maintainerr enum value by index, keeping unknown
+// values visible rather than guessing, since a newer Maintainerr may add some.
+func maintainerrEnumName(names []string, v int) string {
+	if v >= 0 && v < len(names) {
+		return names[v]
 	}
 	return fmt.Sprintf("UNKNOWN(%d)", v)
 }
+
+// maintainerrArrAction names an arrAction value.
+func maintainerrArrAction(v int) string { return maintainerrEnumName(maintainerrArrActions, v) }
 
 // MaintainerrStatus reports a Maintainerr instance's version.
 type MaintainerrStatus struct {
@@ -239,6 +243,7 @@ type MaintainerrRuleDetail struct {
 	ArrAction       string                     `json:"arrAction"`
 	DeleteAfterDays *int                       `json:"deleteAfterDays"`
 	Rules           []MaintainerrRuleCondition `json:"rules"`
+	RulesYAML       string                     `json:"rulesYaml,omitempty" jsonschema:"the conditions in Maintainerr's YAML, the format maintainerr_create_rule and maintainerr_update_rule take"`
 }
 
 // rawMaintainerrRule is the upstream rule group. It omits notifications on
@@ -290,6 +295,17 @@ func MaintainerrGetRule(ctx context.Context, c *Client, id int) (MaintainerrRule
 		out.ArrAction = maintainerrArrAction(r.Collection.ArrAction)
 		out.DeleteAfterDays = r.Collection.DeleteAfterDays
 	}
+	if len(r.Rules) > 0 {
+		rules := make([]json.RawMessage, 0, len(r.Rules))
+		for _, rule := range r.Rules {
+			rules = append(rules, json.RawMessage(rule.RuleJSON))
+		}
+		yaml, err := maintainerrEncodeRules(ctx, c, rules, r.DataType)
+		if err != nil {
+			return MaintainerrRuleDetail{}, fmt.Errorf("rendering rule group %d as YAML: %w", id, err)
+		}
+		out.RulesYAML = yaml
+	}
 	return out, nil
 }
 
@@ -321,22 +337,31 @@ type maintainerrReturnStatus struct {
 	Code    int    `json:"code"`
 	Result  string `json:"result"`
 	Message string `json:"message"`
+	// Skipped counts rules a YAML decode could not resolve.
+	Skipped int `json:"skipped"`
 }
 
-// maintainerrCheck turns a code-0 envelope into an error.
-func maintainerrCheck(body []byte, action string) error {
+// maintainerrDecodeStatus decodes Maintainerr's result envelope and turns a
+// code-0 answer into an error naming the action that was refused.
+func maintainerrDecodeStatus(body []byte, action string) (maintainerrReturnStatus, error) {
 	var st maintainerrReturnStatus
 	if err := unmarshal(body, &st); err != nil {
-		return err
+		return st, err
 	}
 	if st.Code == 1 {
-		return nil
+		return st, nil
 	}
 	reason := st.Result
 	if st.Message != "" {
 		reason += ": " + st.Message
 	}
-	return fmt.Errorf("maintainerr refused to %s: %s", action, reason)
+	return st, fmt.Errorf("maintainerr refused to %s: %s", action, reason)
+}
+
+// maintainerrCheck turns a code-0 envelope into an error.
+func maintainerrCheck(body []byte, action string) error {
+	_, err := maintainerrDecodeStatus(body, action)
+	return err
 }
 
 // MaintainerrAddExclusion excludes an item from one collection's rule group,
@@ -454,13 +479,21 @@ type MaintainerrItemStatus struct {
 	ManuallyAddedTo []MaintainerrStatusEntry `json:"manuallyAddedTo"`
 }
 
+// maintainerrValidateMediaID rejects ids that would not be a single path
+// segment. A slash would let an id walk to another endpoint, such as
+// /api/settings, which returns every secret in plaintext.
+func maintainerrValidateMediaID(id string) error {
+	if strings.Contains(id, "/") || id == "" || id == ".." {
+		return fmt.Errorf("invalid mediaServerId %q: want a single media server item id", id)
+	}
+	return nil
+}
+
 // MaintainerrMediaStatus reports the exclusions and manual collections that
 // apply to a media item, including those inherited from its show or season.
 func MaintainerrMediaStatus(ctx context.Context, c *Client, mediaServerID string) (MaintainerrItemStatus, error) {
-	if strings.Contains(mediaServerID, "/") || mediaServerID == "" || mediaServerID == ".." {
-		// The id becomes a path segment. A slash would let it walk to another
-		// endpoint, such as /api/settings, which returns every secret in plaintext.
-		return MaintainerrItemStatus{}, fmt.Errorf("invalid mediaServerId %q: want a single media server item id", mediaServerID)
+	if err := maintainerrValidateMediaID(mediaServerID); err != nil {
+		return MaintainerrItemStatus{}, err
 	}
 	return GetJSON[MaintainerrItemStatus](ctx, c, "/media-server/meta/"+mediaServerID+"/maintainerr-status")
 }
