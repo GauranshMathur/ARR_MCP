@@ -842,6 +842,28 @@ func TestMaintainerrUpdateRuleRefusesNewRulesOnAZeroGraceDeletingCollection(t *t
 	}
 }
 
+func TestMaintainerrUpdateRuleRefusesNewRulesWhenTheGracePeriodIsUnreadable(t *testing.T) {
+	cases := map[string]any{
+		"string":   "0",
+		"negative": -1,
+	}
+	for name, days := range cases {
+		t.Run(name, func(t *testing.T) {
+			routes := updateRoutes()
+			routes["GET /api/rules/2"] = storedGroupWithCollection(t, map[string]any{"deleteAfterDays": days})
+			c, paths, _ := maintainerrRoutes(t, routes)
+			yaml := "rules: []"
+
+			if _, err := MaintainerrUpdateRule(context.Background(), c, 2, MaintainerrRulePatch{RulesYAML: &yaml}); err == nil {
+				t.Fatal("rulesYaml accepted on a collection whose grace period is not null or at least a day")
+			}
+			if n := sentPutCount(*paths); n != 0 {
+				t.Errorf("%d PUTs sent", n)
+			}
+		})
+	}
+}
+
 func TestMaintainerrUpdateRuleAllowsNewRulesWhereDeletionIsNotImmediate(t *testing.T) {
 	cases := map[string]map[string]any{
 		"deleteAfterDays null":   {"deleteAfterDays": nil},

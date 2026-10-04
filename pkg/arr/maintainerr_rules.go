@@ -549,10 +549,11 @@ func MaintainerrUpdateRule(ctx context.Context, c *Client, id int, p Maintainerr
 	}
 	return maintainerrUpdateRule(ctx, c, id, func(group, col map[string]any) error {
 		// New conditions add items that the action then takes after the grace
-		// period, and this call is write-tier. With no grace period (a real 0,
-		// not null, which means never) that is an immediate deletion, which
-		// belongs to maintainerr_set_deletion_policy.
-		if days, ok := col["deleteAfterDays"].(float64); p.RulesYAML != nil && ok && days == 0 {
+		// period, and this call is write-tier. Without a grace period that is
+		// an immediate deletion, which belongs to maintainerr_set_deletion_policy.
+		// Only null (never) or at least a day counts as one; anything else,
+		// including a value that cannot be read, is refused.
+		if days, ok := col["deleteAfterDays"].(float64); p.RulesYAML != nil && col["deleteAfterDays"] != nil && (!ok || days < 1) {
 			if action, _ := col["arrAction"].(float64); maintainerrArrAction(int(action)) != "DO_NOTHING" {
 				return fmt.Errorf("rule group %d acts with no grace period; raise deleteAfterDays with "+
 					"maintainerr_set_deletion_policy, or set its arrAction to DO_NOTHING, before changing its conditions", id)
