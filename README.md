@@ -766,7 +766,7 @@ var BazarrSpec = ServiceSpec{
 }
 ```
 
-Four auth schemes exist: `AuthHeaderKey` (the \*arr apps and Bazarr), `AuthBasic`
+Four auth schemes exist: `AuthHeaderKey` (the \*arr apps, Bazarr and Seerr), `AuthBasic`
 (NZBGet), `AuthSession` (qBittorrent's form login, with the session cookie cached per
 instance and refreshed once on a 403) and `AuthNone` (Maintainerr).
 
