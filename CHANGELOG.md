@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.8.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.7.0...v1.8.0) (2026-10-04)
+
+
+### Features
+
+* **seerr:** add Seerr request manager support ([79de757](https://github.com/GauranshMathur/ARR_MCP/commit/79de757668d36f6c1e45a07a2250101229ff429f))
+
+
+### Bug Fixes
+
+* **seerr:** mark user-written issue text and names as data ([843493e](https://github.com/GauranshMathur/ARR_MCP/commit/843493ed051601afce68269c536d8b716a0c1964))
+
+
+### Documentation
+
+* **seerr:** list Seerr under the header-key auth scheme ([5e12891](https://github.com/GauranshMathur/ARR_MCP/commit/5e12891a44866512666adda51929663f3dd37281))
+
 ## [1.7.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.6.0...v1.7.0) (2026-10-04)
 
 
