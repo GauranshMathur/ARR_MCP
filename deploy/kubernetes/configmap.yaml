@@ -70,3 +70,8 @@ data:
       maintainerr:
         - name: main
           url: http://maintainerr.media.svc.cluster.local:6246
+
+      seerr:
+        - name: main
+          url: http://seerr.media.svc.cluster.local:5055
+          apiKey: ${SEERR_API_KEY}

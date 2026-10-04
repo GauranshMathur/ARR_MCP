@@ -178,3 +178,35 @@ func TestEnvFallbackBuildsUnauthenticatedInstanceFromURL(t *testing.T) {
 		t.Errorf("instance = %+v, want default at http://m:6246", inst)
 	}
 }
+
+// Seerr authenticates with an API key like the *arr apps, so SEERR_URL alone
+// is not enough and SEERR_API_KEY completes the instance.
+func TestEnvFallbackBuildsSeerrInstanceFromURLAndKey(t *testing.T) {
+	t.Setenv("SEERR_URL", "http://s:5055")
+	t.Setenv("SEERR_API_KEY", "seerr-key")
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	inst, err := c.Resolve("seerr", "")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if inst.Name != "default" || inst.URL != "http://s:5055" || inst.APIKey != "seerr-key" {
+		t.Errorf("instance = %+v, want default at http://s:5055 with the key", inst)
+	}
+}
+
+func TestSeerrIsAKnownService(t *testing.T) {
+	p := writeCfg(t, `
+services:
+  seerr:
+    - name: main
+      url: http://s:5055
+      apiKey: k
+`)
+	if _, err := Load(p); err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+}

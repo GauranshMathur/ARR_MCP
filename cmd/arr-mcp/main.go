@@ -26,6 +26,7 @@ var specs = map[string]arr.ServiceSpec{
 	"qbittorrent": arr.QBittorrentSpec,
 	"nzbget":      arr.NZBGetSpec,
 	"maintainerr": arr.MaintainerrSpec,
+	"seerr":       arr.SeerrSpec,
 }
 
 func main() {

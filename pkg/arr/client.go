@@ -71,6 +71,10 @@ var (
 	// MaintainerrSpec describes Maintainerr, which has no API authentication:
 	// it answers every request, with or without a key.
 	MaintainerrSpec = ServiceSpec{Name: "maintainerr", BasePath: "/api", StatusPath: "/app/status", Auth: AuthNone}
+	// SeerrSpec describes Seerr (the merged Jellyseerr and Overseerr). Its
+	// /status answers without a key, so the status path is /settings/about,
+	// which needs one and lets --check catch a wrong key.
+	SeerrSpec = ServiceSpec{Name: "seerr", BasePath: "/api/v1", StatusPath: "/settings/about", Auth: AuthHeaderKey}
 )
 
 // defaultTimeout bounds ordinary reads and fire-and-forget commands.
