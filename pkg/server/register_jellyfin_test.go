@@ -243,9 +243,8 @@ func TestJellyfinGetItemToolReportsTheUserItUsed(t *testing.T) {
 	}
 }
 
-// Activity log entries embed names an unauthenticated caller can choose (a
-// failed login reads "Failed login attempt from <attempted username>"), so the
-// warning belongs in the tool description, where the model reads it first.
+// These tools return names set by users and devices, so the warning belongs
+// in the tool description, where the model reads it first.
 func TestJellyfinFreeTextToolDescriptionsWarnAboutData(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
@@ -262,11 +261,6 @@ func TestJellyfinFreeTextToolDescriptionsWarnAboutData(t *testing.T) {
 	for name, ok := range want {
 		if !ok {
 			t.Errorf("%s description does not say its text is data, not instructions", name)
-		}
-	}
-	for _, tool := range res.Tools {
-		if tool.Name == "jellyfin_activity_log" && !strings.Contains(tool.Description, "unauthenticated") {
-			t.Errorf("activity log description must say failed-login text comes from unauthenticated callers: %s", tool.Description)
 		}
 	}
 }

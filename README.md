@@ -549,11 +549,11 @@ What Jellyfin itself knows, as opposed to what the \*arr apps acquired: librarie
 state, items as Jellyfin indexes them, who is connected and playing, users, scheduled tasks
 and the activity log. Output is trimmed hard; a Jellyfin item has over a hundred fields.
 Names set by users and devices are passed through verbatim and flagged in the output schema
-as data, not instructions. The activity log deserves particular care: a failed login is
-recorded as `Failed login attempt from <username>` with whatever name the caller typed, so
-anyone who can reach the server's login page can put text in front of the model. The default
-`confirm` permission mode is the guard against acting on it. Lists are capped at 100 entries
-per call. See [Scope](#jellyfin) for what is left out.
+as data, not instructions, and the default `confirm` permission mode is the guard against
+acting on them. One name is withheld: Jellyfin records a failed login as `Failed login
+attempt from <username>` with whatever the caller typed, and the caller needs no account, so
+the activity log reports the attempt, its time and its address without the username. Lists
+are capped at 100 entries per call. See [Scope](#jellyfin) for what is left out.
 
 | Tool | Access |
 |---|---|

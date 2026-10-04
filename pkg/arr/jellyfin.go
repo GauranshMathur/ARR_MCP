@@ -512,6 +512,11 @@ func JellyfinActivityLog(ctx context.Context, c *Client, limit, startIndex int) 
 	}
 	entries := make([]JellyfinActivityEntry, 0, len(raw.Items))
 	for _, r := range raw.Items {
+		// A failed login is named after the username the caller typed, and the
+		// caller needs no account. Match on Type: the name text is localised.
+		if r.Type == "AuthenticationFailed" {
+			r.Name = "Failed login attempt (username withheld)"
+		}
 		entries = append(entries, JellyfinActivityEntry{
 			ID: r.ID, Date: r.Date, Type: r.Type, Severity: r.Severity, Name: r.Name,
 			ShortOverview: r.ShortOverview, UserID: r.UserID,
