@@ -39,10 +39,13 @@ jobs:
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          # Parsed in the shell: env is evaluated even when the step is
+          # skipped, and fromJSON fails on the empty output of a run with no PR.
+          PR: ${{ steps.release.outputs.pr }}
         run: |
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          gh workflow run security.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          branch=$(jq -r '.headBranchName' <<<"$PR")
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          gh workflow run security.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
 
   publish:
     name: Build, scan, publish
