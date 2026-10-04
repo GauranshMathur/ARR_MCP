@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.7.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.6.0...v1.7.0) (2026-10-04)
+
+
+### Features
+
+* **maintainerr:** add and remove collection items by hand ([bf88f36](https://github.com/GauranshMathur/ARR_MCP/commit/bf88f36f168de96ac0034517836d1c086172ece3))
+* **maintainerr:** create rule groups from YAML ([2544331](https://github.com/GauranshMathur/ARR_MCP/commit/2544331a4a88d828ac53efa866ee1aa1f22cab24))
+* **maintainerr:** delete rule groups ([a76365b](https://github.com/GauranshMathur/ARR_MCP/commit/a76365b623cf63240d72fd6597fe14557e09c73d))
+* **maintainerr:** dry-run a rule group against one item ([09a95d1](https://github.com/GauranshMathur/ARR_MCP/commit/09a95d149370a1269b569a1c16a8875fab1977dc))
+* **maintainerr:** edit rule groups and collection settings ([fd09abc](https://github.com/GauranshMathur/ARR_MCP/commit/fd09abc2b625f752ac9d13ce4a3a396cc17685ec))
+* **maintainerr:** list libraries, arr servers and rule properties ([55ed504](https://github.com/GauranshMathur/ARR_MCP/commit/55ed504e10d8e9d862b5b73a8edbf03e29734e0a))
+* **maintainerr:** show rule groups as Maintainerr YAML ([5ea5340](https://github.com/GauranshMathur/ARR_MCP/commit/5ea5340facbba1df14aa1469822bdf31c65b022d))
+
+
+### Bug Fixes
+
+* **maintainerr:** fail closed when a grace period cannot be read ([26c54c3](https://github.com/GauranshMathur/ARR_MCP/commit/26c54c373a797ecaefafb1f71c8d84f1bc76a960))
+* **maintainerr:** make rule creation report only the group it created ([3c6c63e](https://github.com/GauranshMathur/ARR_MCP/commit/3c6c63eec97bfaff0477aaa3c99f183a468d761e))
+* **maintainerr:** refuse edits that would drop a rule group's conditions ([0337109](https://github.com/GauranshMathur/ARR_MCP/commit/03371096b250e4973fdb6526ac10b862ae130b8d))
+* **maintainerr:** refuse rule edits on zero-grace deleting collections ([a0e4399](https://github.com/GauranshMathur/ARR_MCP/commit/a0e439959510c2d842c4d813feae6eb43a047b7e))
+
+
+### Documentation
+
+* design Maintainerr rule and collection management ([40d6a1d](https://github.com/GauranshMathur/ARR_MCP/commit/40d6a1db20270e7eace787cf6d491ca27fb6af4b))
+* document Maintainerr rule management tools ([29e8371](https://github.com/GauranshMathur/ARR_MCP/commit/29e8371d553bda21a952550bd23b719eb0800e71))
+* plan Maintainerr rule and collection management ([ccd83dc](https://github.com/GauranshMathur/ARR_MCP/commit/ccd83dc05015720bb6e2ac0fb2507920fee42371))
+
 ## [1.6.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.5.0...v1.6.0) (2026-09-28)
 
 
