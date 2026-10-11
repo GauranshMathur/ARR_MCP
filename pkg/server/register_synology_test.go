@@ -113,7 +113,7 @@ func callSynology(t *testing.T, cs *mcp.ClientSession, name string, args map[str
 	return contentText(res)
 }
 
-func TestSynologyToolsAreExactlyTheReadToolsAndAllAdvertisedAsRead(t *testing.T) {
+func TestSynologyReadToolsAreAllAdvertisedAsRead(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, synologyCfg(srv.URL, permsFull))
 	res, err := cs.ListTools(context.Background(), nil)
@@ -122,7 +122,7 @@ func TestSynologyToolsAreExactlyTheReadToolsAndAllAdvertisedAsRead(t *testing.T)
 	}
 	tools := map[string]*mcp.Tool{}
 	for _, tool := range res.Tools {
-		if strings.HasPrefix(tool.Name, "synology_") {
+		if strings.HasPrefix(tool.Name, "synology_") && !has(synologyWriteTools, tool.Name) {
 			tools[tool.Name] = tool
 		}
 	}
