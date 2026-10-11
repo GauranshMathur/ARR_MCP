@@ -19,6 +19,10 @@ type Instance struct {
 	Default  bool   `yaml:"default"`
 	// Permissions optionally overrides the global policy for this instance.
 	Permissions *Permissions `yaml:"permissions"`
+	// AllowedPaths fences the Synology file-changing tools: absolute DSM
+	// paths (a share or a folder in one). Empty means those tools refuse
+	// everything. Only synology accepts it.
+	AllowedPaths []string `yaml:"allowedPaths"`
 }
 
 // Config is the fully resolved server configuration.
