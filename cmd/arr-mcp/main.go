@@ -29,6 +29,7 @@ var specs = map[string]arr.ServiceSpec{
 	"seerr":       arr.SeerrSpec,
 	"jellyfin":    arr.JellyfinSpec,
 	"jellystat":   arr.JellystatSpec,
+	"synology":    arr.SynologySpec,
 }
 
 func main() {

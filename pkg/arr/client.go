@@ -9,9 +9,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 )
 
 // AuthKind selects how credentials are attached to outbound requests.
@@ -27,6 +30,9 @@ const (
 	// AuthSession logs in with username and password once, then replays the
 	// session cookie the service issued. qBittorrent's WebUI works this way.
 	AuthSession
+	// AuthDSM logs in through Synology DSM's SYNO.API.Auth and sends the
+	// session id as a `_sid` form field on every call. See synoCall.
+	AuthDSM
 )
 
 // ServiceSpec describes how one service exposes its API. Keeping the base path
@@ -87,6 +93,10 @@ var (
 		Name: "jellyfin", BasePath: "", StatusPath: "/System/Info",
 		Auth: AuthHeaderKey, AuthHeader: "Authorization", AuthHeaderFormat: `MediaBrowser Token="%s"`,
 	}
+	// SynologySpec describes Synology DSM. Every API is served from
+	// /webapi/entry.cgi and selected by the api, version and method form
+	// fields, so there is no per-API path; the calls live in synology.go.
+	SynologySpec = ServiceSpec{Name: "synology", BasePath: "/webapi", StatusPath: "/entry.cgi", Auth: AuthDSM}
 	// JellystatSpec describes Jellystat, which takes the raw key in x-api-token
 	// (backend/server.js authenticate). Its routes sit under /api and /stats, so
 	// there is no base path. The status path is /stats/getLibraryOverview: it
@@ -175,7 +185,7 @@ func (c *Client) authorize(req *http.Request) {
 		req.Header.Set(header, value)
 	case AuthBasic:
 		req.SetBasicAuth(c.creds.Username, c.creds.Password)
-	case AuthNone, AuthSession:
+	case AuthNone, AuthSession, AuthDSM:
 	}
 }
 
@@ -186,14 +196,41 @@ type session struct {
 	mu       sync.Mutex
 	sid      string
 	loggedIn bool
+
+	// issued holds every sid this instance has been given, current and replaced,
+	// under its own lock: redact reads it while mu is held across a login.
+	issuedMu sync.Mutex
+	issued   []string
 }
 
-// sessions holds session state keyed by instance URL and username.
+// maxIssued is how many past session ids stay known for redaction.
+const maxIssued = 4
+
+func (s *session) remember(sid string) {
+	if sid == "" {
+		return
+	}
+	s.issuedMu.Lock()
+	defer s.issuedMu.Unlock()
+	s.issued = append(s.issued, sid)
+	if len(s.issued) > maxIssued {
+		s.issued = s.issued[len(s.issued)-maxIssued:]
+	}
+}
+
+func (s *session) known() []string {
+	s.issuedMu.Lock()
+	defer s.issuedMu.Unlock()
+	return append([]string(nil), s.issued...)
+}
+
+// sessions holds session state keyed by instance URL, username and password,
+// so a client holding a wrong password cannot ride another client's session.
 var sessions sync.Map
 
 // session returns the cached login state for this client's instance.
 func (c *Client) session() *session {
-	key := c.baseURL + "\x00" + c.creds.Username
+	key := c.baseURL + "\x00" + c.creds.Username + "\x00" + c.creds.Password
 	v, _ := sessions.LoadOrStore(key, &session{})
 	return v.(*session)
 }
@@ -215,6 +252,7 @@ func (c *Client) ensureSession(ctx context.Context, stale string, retry bool) (s
 		return "", err
 	}
 	s.sid, s.loggedIn = sid, true
+	s.remember(sid)
 	return sid, nil
 }
 
@@ -225,6 +263,9 @@ const formContentType = "application/x-www-form-urlencoded"
 // bypasses authentication for this client answers Ok. without a cookie, which
 // is accepted as an empty session.
 func (c *Client) login(ctx context.Context) (string, error) {
+	if c.spec.Auth == AuthDSM {
+		return c.synoLogin(ctx)
+	}
 	target, err := c.resolve("/auth/login", nil)
 	if err != nil {
 		return "", err
@@ -311,14 +352,73 @@ func (c *Client) send(ctx context.Context, method, target string, payload []byte
 // no secrecy anyway.
 const minRedactable = 8
 
-// redact removes credentials from text bound for logs or model-visible errors.
+// redact removes credentials from text bound for logs or model-visible errors:
+// the API key, the password and, for session-authenticated specs, every session
+// id this instance has held, so no caller has to remember to name them.
 func (c *Client) redact(s string) string {
-	for _, secret := range []string{c.creds.APIKey, c.creds.Password} {
-		if len(secret) >= minRedactable {
-			s = strings.ReplaceAll(s, secret, "***")
+	secrets := []string{c.creds.APIKey, c.creds.Password}
+	if c.spec.Auth == AuthSession || c.spec.Auth == AuthDSM {
+		secrets = append(secrets, c.session().known()...)
+	}
+	// Longest first, so a secret that contains another is not left half-masked.
+	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
+	for _, secret := range secrets {
+		if len(secret) < minRedactable {
+			continue
 		}
+		s = regexp.MustCompile(secretPattern(secret)).ReplaceAllString(s, "***")
 	}
 	return s
+}
+
+// secretPattern matches secret however an echo encodes it. An upstream may
+// encode each character its own way (percent-encode the backslash but not the
+// parenthesis, write "/" as "\/" in JSON), so a list of whole-string spellings
+// always misses one. Every character instead matches itself or any of its
+// percent, JSON or HTML-entity forms, in either letter case.
+func secretPattern(secret string) string {
+	var b strings.Builder
+	b.WriteString("(?i)")
+	for _, r := range secret {
+		alts := []string{regexp.QuoteMeta(string(r))}
+
+		var pct strings.Builder
+		for _, octet := range []byte(string(r)) {
+			fmt.Fprintf(&pct, "%%%02X", octet)
+		}
+		alts = append(alts, pct.String())
+
+		var esc strings.Builder
+		for _, unit := range utf16.Encode([]rune{r}) {
+			fmt.Fprintf(&esc, `\\u%04X`, unit)
+		}
+		alts = append(alts, esc.String(), fmt.Sprintf("&#%d;", r), fmt.Sprintf("&#x%X;", r))
+
+		switch r {
+		case '"':
+			alts = append(alts, `\\"`, "&quot;")
+		case '\\', '/':
+			alts = append(alts, `\\`+regexp.QuoteMeta(string(r)))
+		case ' ':
+			alts = append(alts, `\+`)
+		case '&':
+			alts = append(alts, "&amp;")
+		case '<':
+			alts = append(alts, "&lt;")
+		case '>':
+			alts = append(alts, "&gt;")
+		case '\'':
+			alts = append(alts, "&apos;")
+		case '\n':
+			alts = append(alts, `\\n`)
+		case '\r':
+			alts = append(alts, `\\r`)
+		case '\t':
+			alts = append(alts, `\\t`)
+		}
+		b.WriteString("(?:" + strings.Join(alts, "|") + ")")
+	}
+	return b.String()
 }
 
 // StatusError is returned when a service answers with an error status. It
@@ -427,10 +527,24 @@ func (c *Client) Delete(ctx context.Context, path string, q ...Query) ([]byte, e
 
 // Ping checks that the instance is reachable and the credentials work.
 func (c *Client) Ping(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, c.pingTimeout())
 	defer cancel()
+	if c.spec.Auth == AuthDSM {
+		_, err := synoCall[json.RawMessage](ctx, c, synoDSMInfo, nil)
+		return err
+	}
 	_, err := c.Get(ctx, c.spec.StatusPath)
 	return err
+}
+
+// pingTimeout bounds a connectivity check. DSM holds a failed login for several
+// seconds on purpose, so its check waits longer: a shorter one reports the delay
+// as a timeout and hides the real cause, a wrong password.
+func (c *Client) pingTimeout() time.Duration {
+	if c.spec.Auth == AuthDSM {
+		return 20 * time.Second
+	}
+	return 5 * time.Second
 }
 
 // first returns the single optional Query, if present.

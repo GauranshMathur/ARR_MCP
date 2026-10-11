@@ -264,3 +264,68 @@ func TestJellystatIsKnownAndBuildsFromEnv(t *testing.T) {
 		t.Errorf("CredentialKindFor(jellystat) = %v, want CredentialAPIKey", got)
 	}
 }
+
+// Synology DSM logs in with a username and password and its account is a NAS
+// administrator, so the password must be present and the service must never
+// accept an API key.
+func TestSynologyIsKnownAndBuildsFromEnv(t *testing.T) {
+	t.Setenv("SYNOLOGY_URL", "http://nas:5000")
+	t.Setenv("SYNOLOGY_USERNAME", "svc-admin")
+	t.Setenv("SYNOLOGY_PASSWORD", `pa\ss(w0rd)`)
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	inst, err := c.Resolve("synology", "")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if inst.URL != "http://nas:5000" || inst.Username != "svc-admin" || inst.Password != `pa\ss(w0rd)` {
+		t.Errorf("instance = %+v, want url, username and the password intact", inst)
+	}
+	if got := CredentialKindFor("synology"); got != CredentialUserPass {
+		t.Errorf("CredentialKindFor(synology) = %v, want CredentialUserPass", got)
+	}
+}
+
+func TestSynologyRequiresAPassword(t *testing.T) {
+	p := writeCfg(t, `
+services:
+  synology:
+    - name: main
+      url: http://nas:5000
+      username: svc-admin
+`)
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "synology.main: missing password") {
+		t.Fatalf("Load error = %v, want missing password", err)
+	}
+}
+
+func TestSynologyRejectsAnAPIKey(t *testing.T) {
+	p := writeCfg(t, `
+services:
+  synology:
+    - name: main
+      url: http://nas:5000
+      apiKey: abc
+`)
+	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "synology authenticates with username and password, not apiKey") {
+		t.Fatalf("Load error = %v, want apiKey rejection", err)
+	}
+}
+
+func TestEnvFallbackIgnoresSynologyMissingPassword(t *testing.T) {
+	t.Setenv("SYNOLOGY_URL", "http://nas:5000")
+	t.Setenv("SYNOLOGY_USERNAME", "svc-admin")
+	t.Setenv("SONARR_URL", "http://s:8989")
+	t.Setenv("SONARR_API_KEY", "k")
+
+	c, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if len(c.Services["synology"]) != 0 {
+		t.Errorf("synology configured without a password: %+v", c.Services["synology"])
+	}
+}

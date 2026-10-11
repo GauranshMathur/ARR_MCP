@@ -48,7 +48,7 @@ const (
 
 // KnownServices lists the services this build can expose tools for. Config
 // referencing anything else is rejected rather than silently ignored.
-var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr", "qbittorrent", "nzbget", "maintainerr", "seerr", "jellyfin", "jellystat"}
+var KnownServices = []string{"sonarr", "radarr", "prowlarr", "bazarr", "qbittorrent", "nzbget", "maintainerr", "seerr", "jellyfin", "jellystat", "synology"}
 
 // CredentialKind says which secret fields a service authenticates with.
 type CredentialKind int
@@ -68,6 +68,7 @@ const (
 var serviceCredentials = map[string]CredentialKind{
 	"qbittorrent": CredentialUserPass,
 	"nzbget":      CredentialUserPass,
+	"synology":    CredentialUserPass,
 	"maintainerr": CredentialNone,
 }
 

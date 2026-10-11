@@ -214,6 +214,47 @@ func TestRedactHidesPasswords(t *testing.T) {
 	}
 }
 
+// An echo can encode each character its own way, so matching a fixed list of
+// whole-string spellings is not enough: one that percent-encodes the backslash
+// but not the parenthesis matches neither the raw nor the fully encoded form.
+func TestRedactHidesMixedAndForeignEncodings(t *testing.T) {
+	const password = `p"a\ss/w0 rd(é1)`
+	c := NewClient("http://x", ServiceSpec{Name: "nzb", BasePath: "/api", Auth: AuthBasic},
+		Credentials{Username: "u", Password: password})
+
+	// u spells a JSON unicode escape without writing one in this source file.
+	u := func(hex string) string { return `\` + "u" + hex }
+
+	for name, echo := range map[string]string{
+		"raw":                    password,
+		"backslash only encoded": `p"a%5Css/w0 rd(é1)`,
+		"lowercase hex":          `p%22a%5css%2fw0%20rd%28%c3%a91%29`,
+		"plus for space":         `p%22a%5Css%2Fw0+rd%28%C3%A91%29`,
+		"parens left alone":      `p%22a%5Css%2Fw0%20rd(%C3%A91)`,
+		"json":                   `p\"a\\ss/w0 rd(é1)`,
+		"json escaped slash":     `p\"a\\ss\/w0 rd(é1)`,
+		"json unicode escapes":   "p" + u("0022") + "a" + u("005c") + "ss" + u("002f") + "w0 rd(" + u("00e9") + "1)",
+		"json uppercase unicode": "p" + u("0022") + "a" + u("005C") + "ss/w0 rd(" + u("00E9") + "1)",
+		"html entities":          `p&quot;a\ss/w0 rd(é1)`,
+	} {
+		got := c.redact("upstream said: " + echo + " was rejected")
+		if got != "upstream said: *** was rejected" {
+			t.Errorf("%s: redact left %q", name, got)
+		}
+	}
+}
+
+// Matching per character must not make ordinary text look like a secret.
+func TestRedactLeavesUnrelatedTextAlone(t *testing.T) {
+	c := NewClient("http://x", ServiceSpec{Name: "nzb", BasePath: "/api", Auth: AuthBasic},
+		Credentials{Username: "u", Password: "abc def.1(x)"})
+
+	const msg = `dial tcp 10.0.0.1:5000: connect: connection refused; body {"a":"abcdef"} abc+def`
+	if got := c.redact(msg); got != msg {
+		t.Errorf("redact changed unrelated text: %q", got)
+	}
+}
+
 // The wording is what MCP clients already see, so introducing the type must
 // not reword anything: only the ability to read the status is new.
 func TestStatusErrorMessageKeepsExistingWording(t *testing.T) {

@@ -37,13 +37,15 @@ Record anything surprising in the commit body. Real examples already found: Prow
 
 Adding a service should mean *describing* it, not writing a new client.
 
-1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`. Auth schemes: `AuthHeaderKey` (the \*arr apps, Bazarr, Jellyfin, Seerr, Jellystat), `AuthBasic` (NZBGet), `AuthSession` (qBittorrent's form login + cookie). If the key must be wrapped rather than sent raw, set `ServiceSpec.AuthHeaderFormat` — a format with one `%s`, e.g. Jellyfin's `MediaBrowser Token="%s"` in `Authorization`; empty sends the raw key, as Jellystat does in `X-Api-Token`. It is a variant of `AuthHeaderKey`, not another scheme.
+1. Add a `ServiceSpec` in `pkg/arr/client.go` — base path, status path, auth scheme, and auth header if it is not `X-Api-Key`. Auth schemes: `AuthHeaderKey` (the \*arr apps, Bazarr, Jellyfin, Seerr, Jellystat), `AuthBasic` (NZBGet), `AuthSession` (qBittorrent's form login + cookie), `AuthDSM` (Synology DSM: form login at `SYNO.API.Auth`, session id sent as the `_sid` form field on every call). If the key must be wrapped rather than sent raw, set `ServiceSpec.AuthHeaderFormat` — a format with one `%s`, e.g. Jellyfin's `MediaBrowser Token="%s"` in `Authorization`; empty sends the raw key, as Jellystat does in `X-Api-Token`. It is a variant of `AuthHeaderKey`, not another scheme.
 2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`. If it authenticates with a username and password rather than an API key, add it to `serviceCredentials` too — that drives config validation and the `<SERVICE>_USERNAME`/`<SERVICE>_PASSWORD` env fallback.
-3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`. Two call shapes exist: REST services use `GetJSON`/`Post`/`PostForm`; NZBGet's JSON-RPC goes through `nzbCall` in `nzbget.go`.
+3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`. Three call shapes exist: REST services use `GetJSON`/`Post`/`PostForm`; NZBGet's JSON-RPC goes through `nzbCall` in `nzbget.go`; Synology's form calls go through `synoCall` in `synology.go`, which is unexported and only runs the api/method/version triples listed in `synoReadOps`. DSM answers failures with HTTP 200, so never trust the status; `synoCall` reads `success` and the error code.
 4. Add `pkg/server/register_<service>.go` and `pkg/server/tools_<service>.go` (input/output structs), and call the register function from `registerAll`. Server-level tests go in `register_<service>_test.go`, not `server_test.go`.
 5. Add the service to `README.md`, `config.example.yaml`, `.env.example` and `deploy/kubernetes/`.
 
-If a service does not fit any existing auth scheme, that is a signal — say so before adding one. The two that exist beyond `AuthHeaderKey` were added deliberately, one each.
+If a service does not fit any existing auth scheme, that is a signal — say so before adding one. The three that exist beyond `AuthHeaderKey` were added deliberately, one each.
+
+**A service whose credential is an administrator login** (Synology) is limited only by what the code can call. Give every tool one fixed call, never a tool that takes an api or method name, keep an allowlist at the transport (`synoReadOps`), validate path arguments with `SynologyCleanPath` before any request, and never let the password or session id reach a log or an error.
 
 ## Tool design
 
