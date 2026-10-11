@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.11.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.10.0...v1.11.0) (2026-10-11)
+
+
+### Features
+
+* **synology:** add Synology DSM read-only tools ([ee9ee46](https://github.com/GauranshMathur/ARR_MCP/commit/ee9ee46da3e1d8ec0ed7a4db3a0d9044c9bf77ee))
+
+
+### Bug Fixes
+
+* **arr:** redact a secret however each character is encoded ([bca6661](https://github.com/GauranshMathur/ARR_MCP/commit/bca6661604e40361252a5d86dd9ab44f979e7149))
+* **synology:** redact every spelling of the password and session id ([8bdee03](https://github.com/GauranshMathur/ARR_MCP/commit/8bdee038daed6c23d85357c14ada85d83fe75407))
+
+
+### Documentation
+
+* **synology:** document the Synology service and deployment ([ddb23e8](https://github.com/GauranshMathur/ARR_MCP/commit/ddb23e8a5c189059b9d9e409040fee7346639192))
+
 ## [1.10.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.9.1...v1.10.0) (2026-10-11)
 
 
