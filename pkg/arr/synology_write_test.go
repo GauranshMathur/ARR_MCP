@@ -38,7 +38,7 @@ func TestSynologyWriteOpsAreExactlyTheFileStationWrites(t *testing.T) {
 }
 
 func TestSynologyCallStillRefusesUnlistedOpsNextToTheWriteOps(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	for _, op := range []synoOp{
 		{"SYNO.FileStation.Delete", "start", 2},
 		{"SYNO.FileStation.Delete", "delete", 2},
@@ -148,7 +148,7 @@ func TestSynologyWritesWithoutAllowedPathsSendNothing(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newDSM(t)
+			f := newWriteDSM(t)
 			err := call(f)
 			refused(t, f, err)
 			mustContain(t, err.Error(), "allowedPaths")
@@ -172,7 +172,7 @@ func TestSynologyCreateFolderRefusalsSendNothing(t *testing.T) {
 		"control char name": {"/NAS", "a\x00b"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newDSM(t)
+			f := newWriteDSM(t)
 			_, err := SynologyCreateFolder(context.Background(), f.client(), allowNAS, tc.parent, tc.name)
 			refused(t, f, err)
 		})
@@ -180,7 +180,7 @@ func TestSynologyCreateFolderRefusalsSendNothing(t *testing.T) {
 }
 
 func TestSynologyCreateFolderSendsTheGuidesParameters(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CreateFolder/create", `{"success":true,"data":{"folders":[{"isdir":true,"name":"Scratch","path":"/NAS/Scratch"}]}}`)
 	got, err := SynologyCreateFolder(context.Background(), f.client(), allowNAS, "/NAS/", "Scratch")
 	if err != nil {
@@ -203,7 +203,7 @@ func TestSynologyCreateFolderSendsTheGuidesParameters(t *testing.T) {
 }
 
 func TestSynologyCreateFolderDSMFailureIsAnError(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CreateFolder/create", `{"success":false,"error":{"code":1100}}`)
 	_, err := SynologyCreateFolder(context.Background(), f.client(), allowNAS, "/NAS", "x")
 	if err == nil {
@@ -227,7 +227,7 @@ func TestSynologyRenameRefusalsSendNothing(t *testing.T) {
 		"backslash name":   {"/NAS/a", `..\b`},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f := newDSM(t)
+			f := newWriteDSM(t)
 			_, err := SynologyRename(context.Background(), f.client(), allowNAS, tc.path, tc.name)
 			refused(t, f, err)
 		})
@@ -235,14 +235,14 @@ func TestSynologyRenameRefusalsSendNothing(t *testing.T) {
 }
 
 func TestSynologyRenameSendsTheGuidesParameters(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.Rename/rename", `{"success":true,"data":{"files":[{"isdir":false,"name":"b, c.mkv","path":"/NAS/Movies/b, c.mkv"}]}}`)
 	got, err := SynologyRename(context.Background(), f.client(), allowNAS, "/NAS/Movies/a.mkv", "b, c.mkv")
 	if err != nil {
 		t.Fatalf("SynologyRename: %v", err)
 	}
 	mustContain(t, jsonOf(t, got), `"name":"b, c.mkv"`, `"path":"/NAS/Movies/b, c.mkv"`)
-	form := f.requests()[1].form
+	form := f.requests()[2].form // login, getinfo, rename
 	for k, v := range map[string]string{
 		"api": "SYNO.FileStation.Rename", "version": "2", "method": "rename",
 		"path": `["/NAS/Movies/a.mkv"]`, "name": `["b, c.mkv"]`,
@@ -257,7 +257,7 @@ func TestSynologyRenameSendsTheGuidesParameters(t *testing.T) {
 
 func copyFake(t *testing.T, statuses ...string) *dsmFake {
 	t.Helper()
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CopyMove/start", `{"success":true,"data":{"taskid":"FileStation_ABC"}}`)
 	f.handlers["SYNO.FileStation.CopyMove/status"] = func(n int, _ url.Values) string {
 		return statuses[min(n-1, len(statuses)-1)]
@@ -320,11 +320,11 @@ func TestSynologyCopyMoveSendsTheGuidesParametersAndOverwriteIsFalseByDefault(t 
 		t.Fatalf("SynologyCopyMove: %v", err)
 	}
 	mustContain(t, jsonOf(t, got), `"operation":"copy"`, `"finished":true`, `"partial":false`, `"overwrite":false`, `"destination":"/NAS/b"`)
-	want := "SYNO.FileStation.CopyMove/start,SYNO.FileStation.CopyMove/status,SYNO.FileStation.CopyMove/status,SYNO.FileStation.CopyMove/stop"
+	want := "SYNO.FileStation.List/getinfo,SYNO.FileStation.CopyMove/start,SYNO.FileStation.CopyMove/status,SYNO.FileStation.CopyMove/status,SYNO.FileStation.CopyMove/stop"
 	if g := strings.Join(f.seen(), ","); g != want {
 		t.Errorf("calls = %s\n want %s", g, want)
 	}
-	start := f.requests()[1].form
+	start := f.requests()[2].form // login, getinfo, start
 	for k, v := range map[string]string{
 		"api": "SYNO.FileStation.CopyMove", "version": "3", "method": "start",
 		"path": `["/NAS/a, 1.mkv","/NAS/c"]`, "dest_folder_path": `"/NAS/b"`,
@@ -352,7 +352,7 @@ func TestSynologyCopyMoveMoveAndOverwriteAreExplicit(t *testing.T) {
 		t.Fatalf("SynologyCopyMove: %v", err)
 	}
 	mustContain(t, jsonOf(t, got), `"operation":"move"`, `"overwrite":true`)
-	start := f.requests()[1].form
+	start := f.requests()[2].form // login, getinfo, start
 	if start.Get("overwrite") != "true" || start.Get("remove_src") != "true" {
 		t.Errorf("overwrite=%q remove_src=%q, want true true", start.Get("overwrite"), start.Get("remove_src"))
 	}
@@ -434,7 +434,7 @@ func TestSynologyCopyMoveNeverStartsTwiceWhenTheStatusFails(t *testing.T) {
 
 func TestSynologyCopyMoveStartAnswerWithoutATaskIsNotRetried(t *testing.T) {
 	fastPolling(t, 5)
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CopyMove/start", `{"success":true,"data":{}}`)
 	_, err := SynologyCopyMove(context.Background(), f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/b"})
 	if err == nil {
@@ -447,7 +447,7 @@ func TestSynologyCopyMoveStartAnswerWithoutATaskIsNotRetried(t *testing.T) {
 }
 
 func TestSynologyCopyMoveStartRefusedByDSMIsNotRetried(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CopyMove/start", `{"success":false,"error":{"code":408}}`)
 	_, err := SynologyCopyMove(context.Background(), f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/b"})
 	if err == nil {
@@ -460,7 +460,7 @@ func TestSynologyCopyMoveStartRefusedByDSMIsNotRetried(t *testing.T) {
 }
 
 func TestSynologyCopyMoveErrorsNeverCarryTheCredentials(t *testing.T) {
-	f := newDSM(t)
+	f := newWriteDSM(t)
 	f.on("SYNO.FileStation.CopyMove/start", `{"success":false,"error":{"code":1003}}`)
 	_, err := SynologyCopyMove(context.Background(), f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/b"})
 	if err == nil {

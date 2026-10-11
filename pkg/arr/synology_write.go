@@ -46,12 +46,18 @@ var synoWriteOps = map[synoOp]bool{
 // fence meant. The failure is safe: /nas/x is refused, never widened. Entries of
 // allowed that are not valid paths never match. The cleaned path is returned.
 func synoCheckAllowed(allowed []string, path string, strict bool) (string, error) {
-	clean, err := SynologyCleanPath(path)
+	clean, _, err := synoFence(allowed, path, strict)
+	return clean, err
+}
+
+// synoFence is synoCheckAllowed that also returns the allowed path that matched.
+func synoFence(allowed []string, path string, strict bool) (clean, matched string, err error) {
+	clean, err = SynologyCleanPath(path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if len(allowed) == 0 {
-		return "", errors.New("synology file changes are disabled: this instance has no allowedPaths. " +
+		return "", "", errors.New("synology file changes are disabled: this instance has no allowedPaths. " +
 			"Set allowedPaths on the synology instance in the config, for example allowedPaths: [\"/NAS\"], and restart")
 	}
 	var roots []string
@@ -65,17 +71,103 @@ func synoCheckAllowed(allowed []string, path string, strict bool) (string, error
 			continue
 		}
 		if clean == root || strings.HasPrefix(clean, root+"/") {
-			return clean, nil
+			return clean, root, nil
 		}
 	}
 	if strict && len(roots) > 0 {
 		for _, root := range roots {
 			if clean == root {
-				return "", fmt.Errorf("path %q is an allowedPaths entry itself; name something inside it", clean)
+				return "", "", fmt.Errorf("path %q is an allowedPaths entry itself; name something inside it", clean)
 			}
 		}
 	}
-	return "", fmt.Errorf("path %q is outside allowedPaths (%s); comparison is exact, including letter case", clean, strings.Join(roots, ", "))
+	return "", "", fmt.Errorf("path %q is outside allowedPaths (%s); comparison is exact, including letter case", clean, strings.Join(roots, ", "))
+}
+
+// synoFenced is a cleaned path together with the allowed path that matched it.
+type synoFenced struct{ path, root string }
+
+// synoFenceAll runs synoFence on each path and keeps the matches.
+func synoFenceAll(allowed []string, paths []string, strict bool) ([]synoFenced, error) {
+	out := make([]synoFenced, 0, len(paths))
+	for _, p := range paths {
+		clean, root, err := synoFence(allowed, p, strict)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, synoFenced{clean, root})
+	}
+	return out, nil
+}
+
+// synoVerifyRealPaths is the second half of the fence, run after the textual
+// check and before any state-changing call. allowedPaths compares names, and a
+// name can be a link: /NAS/x -> /volume1/kube is textually inside /NAS. So it
+// asks DSM (SYNO.FileStation.List getinfo, a read) for the real_path of each
+// matched allowed path and each existing path the operation touches, and
+// requires real_path(path) to be EXACTLY real_path(root) + the part of path
+// below root. Any difference means some component is a link or a mount and is
+// refused, even if it points back inside the fence. It fails closed: a failed
+// lookup, a missing real_path, or a different number of answers than asked
+// refuses.
+//
+// Verified live (read-only): real_path comes back for shares and folders and is
+// "/volume1" + path when nothing is a link, and type and mount_point_type are
+// empty for a plain folder. ASSUMED, never observed because the NAS has no link:
+// that DSM reports a link's target in real_path (so the equality check trips),
+// or sets mount_point_type, or a "link" type. A link that DSM reports as its
+// own plain path would pass. The live test plan has a step to find out.
+//
+// Not covered: this is check-then-act, so a link swapped in between the check
+// and the write is not caught, and links nested inside a folder that is copied
+// or moved are handled as DSM sees fit. allowedPaths guards against mistakes
+// and planted links; it is not a sandbox against someone with write access
+// racing the tool.
+func synoVerifyRealPaths(ctx context.Context, c *Client, items []synoFenced) error {
+	var ask []string
+	seen := map[string]bool{}
+	for _, it := range items {
+		for _, p := range []string{it.root, it.path} {
+			if !seen[p] {
+				seen[p] = true
+				ask = append(ask, p)
+			}
+		}
+	}
+	refuse := func(format string, a ...any) error {
+		return fmt.Errorf(format+"; nothing was changed", a...)
+	}
+	raw, err := synoCall[struct {
+		Files []synoRawFile `json:"files"`
+	}](ctx, c, synoFileGetInfo, url.Values{
+		"path": {synoJSONList(ask...)}, "additional": {`["real_path","type","mount_point_type"]`},
+	})
+	if err != nil {
+		return refuse("could not check the paths for links: %w", err)
+	}
+	if len(raw.Files) != len(ask) {
+		return refuse("could not check the paths for links: DSM answered %d entries for %d paths", len(raw.Files), len(ask))
+	}
+	info := make(map[string]synoRawFile, len(ask))
+	for i, f := range raw.Files {
+		if f.Code != 0 {
+			return refuse("could not check %q for links: %w", ask[i], &synoError{api: synoFileGetInfo.api, method: synoFileGetInfo.method, code: int(f.Code)})
+		}
+		if !strings.HasPrefix(f.Additional.RealPath, "/") {
+			return refuse("could not check %q for links: DSM gave no real path", ask[i])
+		}
+		if m, typ := f.Additional.MountPointType, strings.ToLower(f.Additional.Type); m != "" || typ == "link" || typ == "symlink" {
+			return refuse("path %q is a link or a mount, not a plain file or folder", ask[i])
+		}
+		info[ask[i]] = f
+	}
+	for _, it := range items {
+		want := strings.TrimRight(info[it.root].Additional.RealPath, "/") + strings.TrimPrefix(it.path, it.root)
+		if info[it.path].Additional.RealPath != want {
+			return refuse("path %q resolves outside its expected location (a folder in it is a link or mount)", it.path)
+		}
+	}
+	return nil
 }
 
 // synoCheckName requires one plain name, so the result stays in the folder it is
@@ -101,13 +193,17 @@ func synoCheckName(name string) error {
 // already exist: parents are never created for the caller, and force_parent is
 // sent false, so a folder that already exists is an error rather than a no-op.
 func SynologyCreateFolder(ctx context.Context, c *Client, allowed []string, parent, name string) (SynologyFile, error) {
-	parent, err := synoCheckAllowed(allowed, parent, false)
+	fenced, err := synoFenceAll(allowed, []string{parent}, false)
 	if err != nil {
 		return SynologyFile{}, err
 	}
 	if err := synoCheckName(name); err != nil {
 		return SynologyFile{}, err
 	}
+	if err := synoVerifyRealPaths(ctx, c, fenced); err != nil {
+		return SynologyFile{}, err
+	}
+	parent = fenced[0].path
 	raw, err := synoCall[struct {
 		Folders []synoRawFile `json:"folders"`
 	}](ctx, c, synoCreateFolder, url.Values{
@@ -125,13 +221,17 @@ func SynologyCreateFolder(ctx context.Context, c *Client, allowed []string, pare
 // SynologyRename renames the file or folder at path to newName within the same
 // folder. The path must be inside an allowed path, not an allowed path itself.
 func SynologyRename(ctx context.Context, c *Client, allowed []string, path, newName string) (SynologyFile, error) {
-	path, err := synoCheckAllowed(allowed, path, true)
+	fenced, err := synoFenceAll(allowed, []string{path}, true)
 	if err != nil {
 		return SynologyFile{}, err
 	}
 	if err := synoCheckName(newName); err != nil {
 		return SynologyFile{}, err
 	}
+	if err := synoVerifyRealPaths(ctx, c, fenced); err != nil {
+		return SynologyFile{}, err
+	}
+	path = fenced[0].path
 	raw, err := synoCall[struct {
 		Files []synoRawFile `json:"files"`
 	}](ctx, c, synoRename, url.Values{"path": {synoJSONList(path)}, "name": {synoJSONList(newName)}})
@@ -200,18 +300,19 @@ func SynologyCopyMove(ctx context.Context, c *Client, allowed []string, req Syno
 	if len(req.Sources) == 0 {
 		return SynologyCopyMoveResult{}, errors.New("at least one source path is required")
 	}
-	sources := make([]string, 0, len(req.Sources))
-	for _, s := range req.Sources {
-		clean, err := synoCheckAllowed(allowed, s, true)
-		if err != nil {
-			return SynologyCopyMoveResult{}, fmt.Errorf("source: %w", err)
-		}
-		sources = append(sources, clean)
+	srcFenced, err := synoFenceAll(allowed, req.Sources, true)
+	if err != nil {
+		return SynologyCopyMoveResult{}, fmt.Errorf("source: %w", err)
 	}
-	dest, err := synoCheckAllowed(allowed, req.Destination, false)
+	sources := make([]string, 0, len(srcFenced))
+	for _, f := range srcFenced {
+		sources = append(sources, f.path)
+	}
+	destFenced, err := synoFenceAll(allowed, []string{req.Destination}, false)
 	if err != nil {
 		return SynologyCopyMoveResult{}, fmt.Errorf("destination: %w", err)
 	}
+	dest := destFenced[0].path
 
 	op := "copy"
 	if req.Move {
@@ -221,6 +322,9 @@ func SynologyCopyMove(ctx context.Context, c *Client, allowed []string, req Syno
 
 	ctx, cancel := context.WithTimeout(ctx, synoCopyTimeout)
 	defer cancel()
+	if err := synoVerifyRealPaths(ctx, c, append(srcFenced, destFenced...)); err != nil {
+		return out, err
+	}
 	started, err := synoCall[struct {
 		TaskID string `json:"taskid"`
 	}](ctx, c, synoCopyMoveStart, url.Values{

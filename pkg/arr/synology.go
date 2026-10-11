@@ -756,10 +756,11 @@ type synoRawFile struct {
 	IsDir      bool    `json:"isdir"`
 	Code       flexInt `json:"code"`
 	Additional struct {
-		RealPath string  `json:"real_path"`
-		Size     flexInt `json:"size"`
-		Type     string  `json:"type"`
-		Owner    struct {
+		RealPath       string  `json:"real_path"`
+		Size           flexInt `json:"size"`
+		Type           string  `json:"type"`
+		MountPointType string  `json:"mount_point_type"`
+		Owner          struct {
 			User  string `json:"user"`
 			Group string `json:"group"`
 		} `json:"owner"`

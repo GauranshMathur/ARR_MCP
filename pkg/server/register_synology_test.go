@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +92,9 @@ func synologyUpstream(t *testing.T, routes map[string]string) (*httptest.Server,
 			return
 		}
 		body, ok := routes[form.Get("api")+" "+form.Get("method")]
+		if ok && body == synologyIdentity {
+			body = identityGetInfo(form.Get("path"))
+		}
 		if !ok {
 			_, _ = w.Write([]byte(`{"success":false,"error":{"code":103}}`))
 			return
@@ -265,4 +269,18 @@ func TestSynologyToolsRejectBadInputWithoutARequest(t *testing.T) {
 	if keys := rec.keys(); len(keys) != 0 {
 		t.Errorf("requests reached the NAS: %v", keys)
 	}
+}
+
+// synologyIdentity as a route answers List getinfo the way DSM does when
+// nothing is a link: every path's real_path is "/volume1" + path.
+const synologyIdentity = "@identity"
+
+func identityGetInfo(pathParam string) string {
+	var paths []string
+	_ = json.Unmarshal([]byte(pathParam), &paths)
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		parts = append(parts, `{"path":`+strconv.Quote(p)+`,"isdir":true,"additional":{"real_path":`+strconv.Quote("/volume1"+p)+`,"type":"","mount_point_type":""}}`)
+	}
+	return `{"success":true,"data":{"files":[` + strings.Join(parts, ",") + `]}}`
 }

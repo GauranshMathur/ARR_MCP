@@ -678,8 +678,18 @@ synology:
   move check every source and the destination folder. A source or rename target may not be an
   allowed path itself (so the fence root cannot be moved or renamed away); a destination may.
 - The check runs before login and before any request. A refused call sends nothing to the NAS.
-- A symbolic link inside an allowed folder may be followed by DSM (not verified); `allowedPaths` compares names, not
-  link targets, so do not put links to outside folders inside an allowed path.
+- **Links.** A name can be a link: `/NAS/x -> /volume1/kube` is textually inside `/NAS`. After the
+  name check, and before anything is changed, the tools ask DSM (File Station `getinfo`, a read)
+  for the real path of the allowed path and of every existing path the call touches (the parent
+  folder, the entry to rename, every copy/move source and the destination). Each must resolve to
+  exactly the allowed path's real path plus the rest of the name; any difference, a mount point,
+  a link type, a failed lookup or a missing answer refuses the call, and nothing is changed. Not
+  yet confirmed on a real NAS: the one tested so far has no link, so it is assumed, not verified,
+  that DSM reports a link's target in `real_path`; the live test plan has a step that checks.
+  Remaining gap: this is check-then-act, so a link swapped in between the check and the write
+  is not caught, and links nested inside a folder being copied or moved are handled as DSM sees
+  fit. `allowedPaths` guards against mistakes and planted links; it is not a sandbox against
+  someone with write access who races the tool.
 - `overwrite` defaults to false: files already in the destination are skipped, not replaced. A
   copy or move runs as a File Station task for up to about two minutes and is stopped after;
   `partial: true` means it was cut off and some files may be done. It is never started twice.

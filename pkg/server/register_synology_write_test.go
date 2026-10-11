@@ -19,6 +19,7 @@ func synologyWriteCfg(url string, perms config.Permissions, allowed ...string) *
 }
 
 var synologyWriteRoutes = map[string]string{
+	"SYNO.FileStation.List getinfo":        synologyIdentity,
 	"SYNO.FileStation.CreateFolder create": `{"success":true,"data":{"folders":[{"isdir":true,"name":"Scratch","path":"/NAS/Scratch"}]}}`,
 	"SYNO.FileStation.Rename rename":       `{"success":true,"data":{"files":[{"isdir":true,"name":"B","path":"/NAS/Scratch/B"}]}}`,
 	"SYNO.FileStation.CopyMove start":      `{"success":true,"data":{"taskid":"FileStation_1"}}`,
@@ -156,11 +157,11 @@ func TestSynologyWriteToolsCallTheRightApiVersionAndMethod(t *testing.T) {
 		out  string
 	}{
 		{"synology_create_folder", map[string]any{"path": "/NAS", "name": "Scratch"},
-			[]string{"SYNO.FileStation.CreateFolder v2 create"}, `"path":"/NAS/Scratch"`},
+			[]string{"SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.CreateFolder v2 create"}, `"path":"/NAS/Scratch"`},
 		{"synology_rename", map[string]any{"path": "/NAS/Scratch/A", "new_name": "B"},
-			[]string{"SYNO.FileStation.Rename v2 rename"}, `"name":"B"`},
+			[]string{"SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Rename v2 rename"}, `"name":"B"`},
 		{"synology_copy_move", map[string]any{"sources": []any{"/NAS/Scratch/B"}, "destination": "/NAS/Scratch", "operation": "copy"},
-			[]string{"SYNO.FileStation.CopyMove v3 start", "SYNO.FileStation.CopyMove v3 status", "SYNO.FileStation.CopyMove v3 stop"}, `"overwrite":false`},
+			[]string{"SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.CopyMove v3 start", "SYNO.FileStation.CopyMove v3 status", "SYNO.FileStation.CopyMove v3 stop"}, `"overwrite":false`},
 	} {
 		before := len(rec.keys())
 		body := callSynology(t, cs, tc.tool, tc.args)
