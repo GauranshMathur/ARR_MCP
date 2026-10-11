@@ -62,7 +62,7 @@ Ask these together, in one message, and wait:
    (Defaults if they're unsure: Sonarr 8989, Radarr 7878, Prowlarr 9696, Bazarr 6767.)
 2. Do you run more than one of any of them? If so, what should each be called?
 3. Should the server be allowed to make changes — add and delete media — or read only?
-4. Docker, or a local binary? Recommend Docker unless they already have Go 1.25+.
+4. Docker, or a local binary? Recommend Docker unless they already have Go 1.26+.
 
 Do not ask for API keys. Tell them where to paste keys themselves:
   Sonarr / Radarr / Prowlarr / Bazarr → Settings → General → Security → API Key
@@ -139,7 +139,7 @@ STEP 4 — COMMAND LINE REFERENCE
 
 There are NO --port or --host flags. Over HTTP the MCP endpoint is /mcp, plus /health.
 
-Local binary install (needs Go 1.25+):
+Local binary install (needs Go 1.26+):
   go install github.com/GauranshMathur/ARR_MCP/cmd/arr-mcp@latest
   # lands at $(go env GOPATH)/bin/arr-mcp
 
