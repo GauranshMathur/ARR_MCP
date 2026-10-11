@@ -95,6 +95,9 @@ func synologyUpstream(t *testing.T, routes map[string]string) (*httptest.Server,
 		if ok && body == synologyIdentity {
 			body = identityGetInfo(form.Get("path"))
 		}
+		if ok && body == synologyShares {
+			body = `{"success":true,"data":{"total":3,"shares":[{"name":"docker","path":"/docker","additional":{"real_path":"/volume1/docker"}},{"name":"kube","path":"/kube","additional":{"real_path":"/volume1/kube"}},{"name":"NAS","path":"/NAS","additional":{"real_path":"/volume1/NAS"}}]}}`
+		}
 		if !ok {
 			_, _ = w.Write([]byte(`{"success":false,"error":{"code":103}}`))
 			return
@@ -272,14 +275,22 @@ func TestSynologyToolsRejectBadInputWithoutARequest(t *testing.T) {
 }
 
 // synologyIdentity as a route answers List getinfo the way DSM does when
-// nothing is a link: every path's real_path is "/volume1" + path.
-const synologyIdentity = "@identity"
+// nothing is a link: every path's real_path is "/volume1" + path, except a name
+// starting with "new", which does not exist yet (code 408).
+const (
+	synologyIdentity = "@identity"
+	synologyShares   = "@shares"
+)
 
 func identityGetInfo(pathParam string) string {
 	var paths []string
 	_ = json.Unmarshal([]byte(pathParam), &paths)
 	parts := make([]string, 0, len(paths))
 	for _, p := range paths {
+		if strings.HasPrefix(p[strings.LastIndex(p, "/")+1:], "new") {
+			parts = append(parts, `{"path":`+strconv.Quote(p)+`,"code":408}`)
+			continue
+		}
 		parts = append(parts, `{"path":`+strconv.Quote(p)+`,"isdir":true,"additional":{"real_path":`+strconv.Quote("/volume1"+p)+`,"type":"","mount_point_type":""}}`)
 	}
 	return `{"success":true,"data":{"files":[` + strings.Join(parts, ",") + `]}}`

@@ -43,6 +43,8 @@ type dsmFake struct {
 	calls    map[string]int
 	// loginBody overrides the login answer when set.
 	loginBody string
+	// absent lists File Station paths the write-tool fakes report as not existing.
+	absent map[string]bool
 }
 
 func newDSM(t *testing.T) *dsmFake {

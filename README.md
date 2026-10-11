@@ -679,17 +679,24 @@ synology:
   allowed path itself (so the fence root cannot be moved or renamed away); a destination may.
 - The check runs before login and before any request. A refused call sends nothing to the NAS.
 - **Links.** A name can be a link: `/NAS/x -> /volume1/kube` is textually inside `/NAS`. After the
-  name check, and before anything is changed, the tools ask DSM (File Station `getinfo`, a read)
-  for the real path of the allowed path and of every existing path the call touches (the parent
-  folder, the entry to rename, every copy/move source and the destination). Each must resolve to
-  exactly the allowed path's real path plus the rest of the name; any difference, a mount point,
-  a link type, a failed lookup or a missing answer refuses the call, and nothing is changed. Not
-  yet confirmed on a real NAS: the one tested so far has no link, so it is assumed, not verified,
-  that DSM reports a link's target in `real_path`; the live test plan has a step that checks.
-  Remaining gap: this is check-then-act, so a link swapped in between the check and the write
-  is not caught, and links nested inside a folder being copied or moved are handled as DSM sees
-  fit. `allowedPaths` guards against mistakes and planted links; it is not a sandbox against
-  someone with write access who races the tool.
+  name check, and before anything is changed, the tools read the share's real path
+  (`list_share`) and ask DSM (File Station `getinfo`, a read) for the real path of the allowed
+  path, of every existing path the call touches (the parent folder, the entry to rename, every
+  copy/move source and the destination), and of the entry the write will land on (the new
+  folder or new name; for copy and move, the destination plus each source's name). Each answer
+  must echo the path asked, and every real path must be exactly the share's real path plus the
+  rest of the name, so a link anywhere in the chain, a link at the allowed root itself, or a
+  link that points back inside the fence is refused. A mount point, a link type, a failed
+  lookup, a share missing from the answer or any unexpected answer refuses the call, and nothing
+  is changed. A landing entry that does not exist is fine; one that exists must pass the same
+  checks (copy, move) or is refused as already existing (create, rename, so a case-only rename
+  is refused too). Not yet confirmed on a real NAS: the one tested so far has no link, so it is
+  assumed, not verified, that DSM reports a link's target in `real_path`; a link that DSM
+  reports as its own plain path, or a dangling link DSM reports as missing, would pass. The live
+  test plan has steps that check. Remaining gap: this is check-then-act, so a link swapped in
+  between the check and the write is not caught, and links nested inside a folder being copied
+  or moved are handled as DSM sees fit. `allowedPaths` guards against mistakes and planted
+  links; it is not a sandbox against someone with write access who races the tool.
 - `overwrite` defaults to false: files already in the destination are skipped, not replaced. A
   copy or move runs as a File Station task for up to about two minutes and is stopped after;
   `partial: true` means it was cut off and some files may be done. It is never started twice.

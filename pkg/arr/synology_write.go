@@ -103,40 +103,106 @@ func synoFenceAll(allowed []string, paths []string, strict bool) ([]synoFenced, 
 // synoVerifyRealPaths is the second half of the fence, run after the textual
 // check and before any state-changing call. allowedPaths compares names, and a
 // name can be a link: /NAS/x -> /volume1/kube is textually inside /NAS. So it
-// asks DSM (SYNO.FileStation.List getinfo, a read) for the real_path of each
-// matched allowed path and each existing path the operation touches, and
-// requires real_path(path) to be EXACTLY real_path(root) + the part of path
-// below root. Any difference means some component is a link or a mount and is
-// refused, even if it points back inside the fence. It fails closed: a failed
-// lookup, a missing real_path, or a different number of answers than asked
-// refuses.
+// asks DSM for real paths (reads only) and refuses unless they are consistent:
 //
-// Verified live (read-only): real_path comes back for shares and folders and is
-// "/volume1" + path when nothing is a link, and type and mount_point_type are
-// empty for a plain folder. ASSUMED, never observed because the NAS has no link:
-// that DSM reports a link's target in real_path (so the equality check trips),
-// or sets mount_point_type, or a "link" type. A link that DSM reports as its
-// own plain path would pass. The live test plan has a step to find out.
+//   - SYNO.FileStation.List list_share gives each share's real_path. The share
+//     is the anchor: the allowed root and every path are checked against it, not
+//     against the root's own real path, so a root (or a folder above it) that is
+//     itself a link does not make everything below it look consistent. A share
+//     missing from the answer refuses.
+//   - one SYNO.FileStation.List getinfo asks the real_path, type and
+//     mount_point_type of the share, each root, each existing path the operation
+//     touches (create: the parent; rename: the entry; copy/move: each source and
+//     the destination folder), and each target the write lands on (create and
+//     rename: parent/new name; copy/move: destination/source's base name).
+//   - an answer is matched to its question by the path it echoes, which must
+//     equal the path asked exactly, in order, so a reordered, merged or
+//     normalised answer can not be attributed to the wrong path.
+//   - real_path(root) and real_path(path) must each EXACTLY equal real_path(share)
+//   - the part below the share. Any difference means a component is a link or
+//     a mount, and is refused even if it points back inside the fence.
+//   - a target that DSM says does not exist (per-entry code 408) is fine; one
+//     that exists must pass the same checks, or, when mayExist is false (create
+//     and rename), is refused as already existing rather than left to DSM.
+//
+// It fails closed on everything else: nothing to check, a path not under its
+// root, a failed lookup, a wrong entry count, any other per-entry code, a
+// missing or relative real_path.
+//
+// Verified live (read-only): list_share and getinfo give real_path as
+// "/volume1" + path when nothing is a link; getinfo answers in request order,
+// echoes each path exactly as asked (also for a missing path, with code 408),
+// and treats commas, quotes, brackets, & and < in a path as part of one name;
+// type and mount_point_type are empty for a plain folder. ASSUMED, never
+// observed because the NAS has no link: that DSM reports a link's target in
+// real_path (so the equality trips), or sets mount_point_type or a link type. A
+// link DSM reports as its own plain path would pass, and so would a dangling
+// link at a target, which getinfo may report as 408. The live test plan checks.
 //
 // Not covered: this is check-then-act, so a link swapped in between the check
 // and the write is not caught, and links nested inside a folder that is copied
 // or moved are handled as DSM sees fit. allowedPaths guards against mistakes
 // and planted links; it is not a sandbox against someone with write access
 // racing the tool.
-func synoVerifyRealPaths(ctx context.Context, c *Client, items []synoFenced) error {
-	var ask []string
-	seen := map[string]bool{}
-	for _, it := range items {
-		for _, p := range []string{it.root, it.path} {
-			if !seen[p] {
-				seen[p] = true
-				ask = append(ask, p)
-			}
-		}
-	}
+func synoVerifyRealPaths(ctx context.Context, c *Client, existing, targets []synoFenced, mayExist bool) error {
 	refuse := func(format string, a ...any) error {
 		return fmt.Errorf(format+"; nothing was changed", a...)
 	}
+	if len(existing) == 0 && len(targets) == 0 {
+		return refuse("nothing to check for links")
+	}
+	// Shape checks first: every path is absolute, cleaned and inside its root,
+	// and every root is inside a share. Nothing is sent for a malformed item.
+	shareOf := func(it synoFenced) (string, error) {
+		clean, err := SynologyCleanPath(it.path)
+		if err != nil || clean != it.path {
+			return "", refuse("unexpected path %q", it.path)
+		}
+		root, err := SynologyCleanPath(it.root)
+		if err != nil || root != it.root {
+			return "", refuse("unexpected allowed path %q", it.root)
+		}
+		if it.path != it.root && !strings.HasPrefix(it.path, it.root+"/") {
+			return "", refuse("path %q is not inside %q", it.path, it.root)
+		}
+		return "/" + strings.SplitN(strings.TrimPrefix(it.root, "/"), "/", 2)[0], nil
+	}
+	shares := map[string]string{} // path -> its share
+	var ask []string
+	seen := map[string]bool{}
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			ask = append(ask, p)
+		}
+	}
+	for _, it := range append(append([]synoFenced{}, existing...), targets...) {
+		share, err := shareOf(it)
+		if err != nil {
+			return err
+		}
+		shares[it.path], shares[it.root] = share, share
+		add(share)
+		add(it.root)
+		add(it.path)
+	}
+
+	listed, err := synoCall[struct {
+		Shares []struct {
+			Path       string `json:"path"`
+			Additional struct {
+				RealPath string `json:"real_path"`
+			} `json:"additional"`
+		} `json:"shares"`
+	}](ctx, c, synoFileListShare, url.Values{"additional": {`["real_path"]`}})
+	if err != nil {
+		return refuse("could not check the paths for links: %w", err)
+	}
+	shareReal := map[string]string{}
+	for _, sh := range listed.Shares {
+		shareReal[sh.Path] = strings.TrimRight(sh.Additional.RealPath, "/")
+	}
+
 	raw, err := synoCall[struct {
 		Files []synoRawFile `json:"files"`
 	}](ctx, c, synoFileGetInfo, url.Values{
@@ -149,22 +215,65 @@ func synoVerifyRealPaths(ctx context.Context, c *Client, items []synoFenced) err
 		return refuse("could not check the paths for links: DSM answered %d entries for %d paths", len(raw.Files), len(ask))
 	}
 	info := make(map[string]synoRawFile, len(ask))
+	absent := map[string]bool{}
+	isTarget := map[string]bool{}
+	for _, t := range targets {
+		isTarget[t.path] = true
+	}
 	for i, f := range raw.Files {
+		if f.Path != ask[i] {
+			return refuse("could not check the paths for links: DSM answered a different path than the one asked")
+		}
+		if f.Code == 408 && isTarget[ask[i]] {
+			absent[ask[i]] = true
+			continue
+		}
 		if f.Code != 0 {
 			return refuse("could not check %q for links: %w", ask[i], &synoError{api: synoFileGetInfo.api, method: synoFileGetInfo.method, code: int(f.Code)})
 		}
 		if !strings.HasPrefix(f.Additional.RealPath, "/") {
 			return refuse("could not check %q for links: DSM gave no real path", ask[i])
 		}
-		if m, typ := f.Additional.MountPointType, strings.ToLower(f.Additional.Type); m != "" || typ == "link" || typ == "symlink" {
+		if typ := strings.ToLower(f.Additional.Type); f.Additional.MountPointType != "" || typ == "link" || typ == "symlink" {
 			return refuse("path %q is a link or a mount, not a plain file or folder", ask[i])
 		}
 		info[ask[i]] = f
 	}
-	for _, it := range items {
-		want := strings.TrimRight(info[it.root].Additional.RealPath, "/") + strings.TrimPrefix(it.path, it.root)
-		if info[it.path].Additional.RealPath != want {
-			return refuse("path %q resolves outside its expected location (a folder in it is a link or mount)", it.path)
+
+	consistent := func(p string) error {
+		share := shares[p]
+		base, ok := shareReal[share]
+		if !ok || !strings.HasPrefix(base, "/") {
+			return refuse("could not check %q for links: DSM did not give the real path of share %q", p, share)
+		}
+		if info[share].Additional.RealPath != base {
+			return refuse("share %q resolves outside its expected location", share)
+		}
+		if info[p].Additional.RealPath != base+strings.TrimPrefix(p, share) {
+			return refuse("path %q resolves outside its expected location (a folder in it is a link or mount)", p)
+		}
+		return nil
+	}
+	for _, it := range existing {
+		if err := consistent(it.root); err != nil {
+			return err
+		}
+		if err := consistent(it.path); err != nil {
+			return err
+		}
+	}
+	for _, it := range targets {
+		if err := consistent(it.root); err != nil {
+			return err
+		}
+		if absent[it.path] {
+			continue
+		}
+		if !mayExist {
+			return refuse("%q already exists", it.path)
+		}
+		if err := consistent(it.path); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -200,10 +309,10 @@ func SynologyCreateFolder(ctx context.Context, c *Client, allowed []string, pare
 	if err := synoCheckName(name); err != nil {
 		return SynologyFile{}, err
 	}
-	if err := synoVerifyRealPaths(ctx, c, fenced); err != nil {
+	parent = fenced[0].path
+	if err := synoVerifyRealPaths(ctx, c, fenced, []synoFenced{{parent + "/" + name, fenced[0].root}}, false); err != nil {
 		return SynologyFile{}, err
 	}
-	parent = fenced[0].path
 	raw, err := synoCall[struct {
 		Folders []synoRawFile `json:"folders"`
 	}](ctx, c, synoCreateFolder, url.Values{
@@ -228,10 +337,10 @@ func SynologyRename(ctx context.Context, c *Client, allowed []string, path, newN
 	if err := synoCheckName(newName); err != nil {
 		return SynologyFile{}, err
 	}
-	if err := synoVerifyRealPaths(ctx, c, fenced); err != nil {
+	path = fenced[0].path
+	if err := synoVerifyRealPaths(ctx, c, fenced, []synoFenced{{path[:strings.LastIndex(path, "/")] + "/" + newName, fenced[0].root}}, false); err != nil {
 		return SynologyFile{}, err
 	}
-	path = fenced[0].path
 	raw, err := synoCall[struct {
 		Files []synoRawFile `json:"files"`
 	}](ctx, c, synoRename, url.Values{"path": {synoJSONList(path)}, "name": {synoJSONList(newName)}})
@@ -322,7 +431,13 @@ func SynologyCopyMove(ctx context.Context, c *Client, allowed []string, req Syno
 
 	ctx, cancel := context.WithTimeout(ctx, synoCopyTimeout)
 	defer cancel()
-	if err := synoVerifyRealPaths(ctx, c, append(srcFenced, destFenced...)); err != nil {
+	// The write lands on destination/<each source's name>: check that too.
+	existing := append(append([]synoFenced{}, srcFenced...), destFenced...)
+	landing := make([]synoFenced, 0, len(sources))
+	for _, src := range sources {
+		landing = append(landing, synoFenced{dest + "/" + src[strings.LastIndex(src, "/")+1:], destFenced[0].root})
+	}
+	if err := synoVerifyRealPaths(ctx, c, existing, landing, true); err != nil {
 		return out, err
 	}
 	started, err := synoCall[struct {
