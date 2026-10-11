@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.9.1...v1.10.0) (2026-10-11)
+
+
+### Features
+
+* **jellystat:** add Jellystat watch statistics support ([5b3b04c](https://github.com/GauranshMathur/ARR_MCP/commit/5b3b04c8a5f91879f03de09086b8bbfed98b9c41))
+
+
+### Bug Fixes
+
+* **jellystat:** reject an unknown sort before any request ([2bf241f](https://github.com/GauranshMathur/ARR_MCP/commit/2bf241fcbaf66799352296da920d3f175508a6d9))
+
 ## [1.9.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.9.0...v1.9.1) (2026-10-11)
 
 
