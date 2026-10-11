@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -193,6 +195,32 @@ type session struct {
 	mu       sync.Mutex
 	sid      string
 	loggedIn bool
+
+	// issued holds every sid this instance has been given, current and replaced,
+	// under its own lock: redact reads it while mu is held across a login.
+	issuedMu sync.Mutex
+	issued   []string
+}
+
+// maxIssued is how many past session ids stay known for redaction.
+const maxIssued = 4
+
+func (s *session) remember(sid string) {
+	if sid == "" {
+		return
+	}
+	s.issuedMu.Lock()
+	defer s.issuedMu.Unlock()
+	s.issued = append(s.issued, sid)
+	if len(s.issued) > maxIssued {
+		s.issued = s.issued[len(s.issued)-maxIssued:]
+	}
+}
+
+func (s *session) known() []string {
+	s.issuedMu.Lock()
+	defer s.issuedMu.Unlock()
+	return append([]string(nil), s.issued...)
 }
 
 // sessions holds session state keyed by instance URL, username and password,
@@ -223,6 +251,7 @@ func (c *Client) ensureSession(ctx context.Context, stale string, retry bool) (s
 		return "", err
 	}
 	s.sid, s.loggedIn = sid, true
+	s.remember(sid)
 	return sid, nil
 }
 
@@ -322,16 +351,28 @@ func (c *Client) send(ctx context.Context, method, target string, payload []byte
 // no secrecy anyway.
 const minRedactable = 8
 
-// redact removes credentials from text bound for logs or model-visible errors.
-// extra names further secrets to remove, such as a session id.
-func (c *Client) redact(s string, extra ...string) string {
-	// A form-encoded login echoed back carries the password percent-encoded, so
-	// that spelling is removed as well as the raw one.
-	secrets := append([]string{c.creds.APIKey, c.creds.Password, url.QueryEscape(c.creds.Password)}, extra...)
+// redact removes credentials from text bound for logs or model-visible errors:
+// the API key, the password and, for session-authenticated specs, every session
+// id this instance has held, so no caller has to remember to name them. Each
+// secret is removed in the spellings an echo could use: raw, form-encoded, path-
+// encoded and JSON-escaped, with percent-encoding hex in either case.
+func (c *Client) redact(s string) string {
+	secrets := []string{c.creds.APIKey, c.creds.Password}
+	if c.spec.Auth == AuthSession || c.spec.Auth == AuthDSM {
+		secrets = append(secrets, c.session().known()...)
+	}
+	var spellings []string
 	for _, secret := range secrets {
-		if len(secret) >= minRedactable {
-			s = strings.ReplaceAll(s, secret, "***")
+		if len(secret) < minRedactable {
+			continue
 		}
+		j, _ := json.Marshal(secret)
+		spellings = append(spellings, secret, url.QueryEscape(secret), url.PathEscape(secret), strings.Trim(string(j), `"`))
+	}
+	// Longest first, so a long spelling is not left half-masked by a shorter one.
+	sort.Slice(spellings, func(i, j int) bool { return len(spellings[i]) > len(spellings[j]) })
+	for _, sp := range spellings {
+		s = regexp.MustCompile("(?i)"+regexp.QuoteMeta(sp)).ReplaceAllString(s, "***")
 	}
 	return s
 }

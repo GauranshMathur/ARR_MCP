@@ -472,7 +472,7 @@ func TestSynologyDirSizeBoundIsPartialAndStillStops(t *testing.T) {
 // DSM sometimes starts a directory-size task it then does not know (status 599
 // from the first poll on), and a missing path looks the same. The start is
 // repeated a bounded number of times before the error is believed.
-func TestSynologyDirSizeOfAMissingPathStopsEveryTaskAndSaysSo(t *testing.T) {
+func TestSynologyDirSizeGivesUpAfterFourUnknownTasksAndStopsEach(t *testing.T) {
 	fastPolling(t, 5)
 	f := dirSizeFake(t, `{"success":false,"error":{"code":599}}`)
 	_, err := SynologyDirSize(context.Background(), f.client(), "/NAS/nope")

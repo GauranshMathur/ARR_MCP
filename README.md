@@ -627,6 +627,8 @@ stop the task, and mark the result `partial` if the wait ran out.
 > that exists only for this. DSM's "No access" setting on a share is not a second fence,
 > since an administrator can lift it.
 >
+> Error text is scrubbed of the password and session id in every common spelling, but only for secrets of 8 or more characters: a shorter password is not masked, so use a longer one.
+>
 > **The connection is plain HTTP.** The URL is `http://<nas>:5000`: the password and the
 > session id cross the network unencrypted, so use this only on a LAN you trust and never
 > over the internet or a shared network. There is deliberately no option to skip TLS
@@ -785,7 +787,8 @@ service is described by a `ServiceSpec` rather than a bespoke client, so it inhe
 transport, the instance registry and the permission model for free. The two download
 clients are the deliberate exceptions: each needed exactly one extra auth scheme on that
 shared transport, not a client of its own. Anything that would need more than that is
-where the line is drawn.
+where the line is drawn. Synology DSM is the one approved exception beyond that line: it needed a call shape of its own
+(`synoCall`) as well as an auth scheme, see [Synology](#synology) below.
 
 ### Planned
 

@@ -246,7 +246,7 @@ func (c *Client) synoExchange(ctx context.Context, op synoOp, params url.Values,
 		return nil, err
 	}
 	if resp.status >= 400 {
-		return nil, &StatusError{Service: c.spec.Name, Status: resp.status, Body: c.redact(strings.TrimSpace(string(resp.body)), sid)}
+		return nil, &StatusError{Service: c.spec.Name, Status: resp.status, Body: c.redact(strings.TrimSpace(string(resp.body)))}
 	}
 	var env synoEnvelope
 	if err := json.Unmarshal(resp.body, &env); err != nil {

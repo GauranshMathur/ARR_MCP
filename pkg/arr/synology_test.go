@@ -2,6 +2,7 @@ package arr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -372,5 +373,129 @@ func TestSynologyBaseURLSubpathIsKept(t *testing.T) {
 func TestSynologyPingWaitsLongerThanTheDefaultForAFailedLogin(t *testing.T) {
 	if got, def := NewClient("http://x", SynologySpec, Credentials{}).pingTimeout(), NewClient("http://x", SonarrSpec, Credentials{}).pingTimeout(); got <= def {
 		t.Errorf("synology ping timeout = %v, want more than the default %v", got, def)
+	}
+}
+
+// --- redaction ---
+
+// redactPass has the characters that encode differently in a form, a path and
+// a JSON string: a space, a double quote, a backslash and a parenthesis.
+const (
+	redactPass = `p"a\ss w0rd(1)`
+	redactSID  = "SID-0123456789abcdefghijklmnopqrstuvwxyzABCDEF/+="
+)
+
+// spellings are the ways an upstream could echo a secret back.
+func spellings(secret string) map[string]string {
+	j, _ := json.Marshal(secret)
+	q := url.QueryEscape(secret)
+	return map[string]string{
+		"raw":       secret,
+		"query":     q,
+		"path":      url.PathEscape(secret),
+		"json":      strings.Trim(string(j), `"`),
+		"lower-hex": strings.ToLower(q),
+		"upper-hex": strings.ToUpper(q),
+	}
+}
+
+// echoServer logs in normally, then answers every other request with an error
+// that echoes whatever the test wants.
+func echoServer(t *testing.T, echo func() string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		form, _ := url.ParseQuery(string(raw))
+		if form.Get("method") == "login" {
+			if form.Get("passwd") != redactPass {
+				_, _ = w.Write([]byte(`{"success":false,"error":{"code":400}}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"success":true,"data":{"sid":%q}}`, redactSID)
+			return
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("gateway: " + echo()))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func assertMasked(t *testing.T, where string, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s: expected an error", where)
+	}
+	for _, secret := range []string{redactPass, redactSID} {
+		for name, sp := range spellings(secret) {
+			if strings.Contains(err.Error(), sp) {
+				t.Errorf("%s: error leaks the %s spelling of a secret: %v", where, name, err)
+			}
+		}
+	}
+}
+
+func TestSynologyRedactsEverySpellingOnEveryPath(t *testing.T) {
+	for _, secret := range []string{redactPass, redactSID} {
+		for name, sp := range spellings(secret) {
+			t.Run(name, func(t *testing.T) {
+				srv := echoServer(t, func() string { return sp })
+				c := NewClient(srv.URL, SynologySpec, Credentials{Username: dsmTestUser, Password: redactPass})
+				_, err := synoCall[map[string]any](context.Background(), c, synoDSMInfo, nil)
+				assertMasked(t, "synoCall", err)
+				// The generic transport path, with a session already cached.
+				_, err = c.Get(context.Background(), "/entry.cgi")
+				assertMasked(t, "generic Get", err)
+			})
+		}
+	}
+}
+
+func TestSynologyRedactsFromTheLoginPath(t *testing.T) {
+	for _, secret := range []string{redactPass} {
+		for name, sp := range spellings(secret) {
+			t.Run(name, func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusBadGateway)
+					_, _ = w.Write([]byte("login echo " + sp))
+				}))
+				t.Cleanup(srv.Close)
+				c := NewClient(srv.URL, SynologySpec, Credentials{Username: dsmTestUser, Password: redactPass})
+				_, err := synoCall[map[string]any](context.Background(), c, synoDSMInfo, nil)
+				assertMasked(t, "login", err)
+			})
+		}
+	}
+}
+
+func TestSynologyRedactMasksTheSessionIDInTransportErrors(t *testing.T) {
+	f := newDSM(t)
+	c := f.client()
+	if _, err := synoCall[map[string]any](context.Background(), c, synoDSMInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	for name, sp := range spellings(f.sid) {
+		if got := c.redact("Post failed: " + sp); strings.Contains(got, sp) {
+			t.Errorf("redact left the %s spelling of the sid: %q", name, got)
+		}
+	}
+}
+
+// A sid being replaced during a re-login is a secret too.
+func TestSynologyRedactMasksTheReplacedSessionID(t *testing.T) {
+	f := newDSM(t)
+	c := f.client()
+	if _, err := synoCall[map[string]any](context.Background(), c, synoDSMInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	old := f.sid
+	f.mu.Lock()
+	f.sid = "rotated"
+	f.mu.Unlock()
+	if _, err := synoCall[map[string]any](context.Background(), c, synoDSMInfo, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.redact("old " + old); strings.Contains(got, old) {
+		t.Errorf("replaced sid not masked: %q", got)
 	}
 }
