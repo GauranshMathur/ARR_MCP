@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -91,6 +92,12 @@ func synologyUpstream(t *testing.T, routes map[string]string) (*httptest.Server,
 			return
 		}
 		body, ok := routes[form.Get("api")+" "+form.Get("method")]
+		if ok && body == synologyIdentity {
+			body = identityGetInfo(form.Get("path"))
+		}
+		if ok && body == synologyShares {
+			body = `{"success":true,"data":{"total":3,"shares":[{"name":"docker","path":"/docker","additional":{"real_path":"/volume1/docker"}},{"name":"kube","path":"/kube","additional":{"real_path":"/volume1/kube"}},{"name":"NAS","path":"/NAS","additional":{"real_path":"/volume1/NAS"}}]}}`
+		}
 		if !ok {
 			_, _ = w.Write([]byte(`{"success":false,"error":{"code":103}}`))
 			return
@@ -113,7 +120,7 @@ func callSynology(t *testing.T, cs *mcp.ClientSession, name string, args map[str
 	return contentText(res)
 }
 
-func TestSynologyToolsAreExactlyTheReadToolsAndAllAdvertisedAsRead(t *testing.T) {
+func TestSynologyReadToolsAreAllAdvertisedAsRead(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, synologyCfg(srv.URL, permsFull))
 	res, err := cs.ListTools(context.Background(), nil)
@@ -122,7 +129,7 @@ func TestSynologyToolsAreExactlyTheReadToolsAndAllAdvertisedAsRead(t *testing.T)
 	}
 	tools := map[string]*mcp.Tool{}
 	for _, tool := range res.Tools {
-		if strings.HasPrefix(tool.Name, "synology_") {
+		if strings.HasPrefix(tool.Name, "synology_") && !has(synologyWriteTools, tool.Name) {
 			tools[tool.Name] = tool
 		}
 	}
@@ -265,4 +272,26 @@ func TestSynologyToolsRejectBadInputWithoutARequest(t *testing.T) {
 	if keys := rec.keys(); len(keys) != 0 {
 		t.Errorf("requests reached the NAS: %v", keys)
 	}
+}
+
+// synologyIdentity as a route answers List getinfo the way DSM does when
+// nothing is a link: every path's real_path is "/volume1" + path, except a name
+// starting with "new", which does not exist yet (code 408).
+const (
+	synologyIdentity = "@identity"
+	synologyShares   = "@shares"
+)
+
+func identityGetInfo(pathParam string) string {
+	var paths []string
+	_ = json.Unmarshal([]byte(pathParam), &paths)
+	parts := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if strings.HasPrefix(p[strings.LastIndex(p, "/")+1:], "new") {
+			parts = append(parts, `{"path":`+strconv.Quote(p)+`,"code":408}`)
+			continue
+		}
+		parts = append(parts, `{"path":`+strconv.Quote(p)+`,"isdir":true,"additional":{"real_path":`+strconv.Quote("/volume1"+p)+`,"type":"","mount_point_type":""}}`)
+	}
+	return `{"success":true,"data":{"files":[` + strings.Join(parts, ",") + `]}}`
 }

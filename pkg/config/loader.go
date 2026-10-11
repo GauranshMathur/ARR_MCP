@@ -249,6 +249,9 @@ func (c *Config) validate() error {
 			if err := validateCredentials(svc, inst); err != nil {
 				return err
 			}
+			if err := validateAllowedPaths(svc, inst); err != nil {
+				return err
+			}
 			if inst.Default {
 				defaults++
 			}
@@ -329,6 +332,45 @@ func validatePermissions(p *Permissions, field string) error {
 	default:
 		return fmt.Errorf("%s.fallback: unknown fallback %q; want one of: %s, %s",
 			field, p.Fallback, FallbackDeny, FallbackAllow)
+	}
+	return nil
+}
+
+// validateAllowedPaths checks the Synology write fence and rewrites each entry
+// in cleaned form (no trailing or doubled slash). An entry must be absolute,
+// must not contain a ".." segment or a backslash or control character, and must
+// not be just "/": the fence is a share or a folder, never the whole NAS.
+func validateAllowedPaths(svc string, inst *Instance) error {
+	if len(inst.AllowedPaths) == 0 {
+		return nil
+	}
+	field := fmt.Sprintf("%s.%s.allowedPaths", svc, inst.Name)
+	if svc != "synology" {
+		return fmt.Errorf("%s: allowedPaths is only supported for synology", field)
+	}
+	for i, p := range inst.AllowedPaths {
+		if !strings.HasPrefix(p, "/") {
+			return fmt.Errorf("%s: %q must be an absolute DSM path such as /NAS or /NAS/Scratch", field, p)
+		}
+		for _, r := range p {
+			if r < 0x20 || r == 0x7f || r == '\\' {
+				return fmt.Errorf("%s: %q contains a control character or backslash", field, p)
+			}
+		}
+		var kept []string
+		for _, seg := range strings.Split(p, "/") {
+			switch seg {
+			case "", ".":
+			case "..":
+				return fmt.Errorf("%s: %q must not contain \"..\"", field, p)
+			default:
+				kept = append(kept, seg)
+			}
+		}
+		if len(kept) == 0 {
+			return fmt.Errorf("%s: %q would allow the whole NAS; name a share or a folder such as /NAS", field, p)
+		}
+		inst.AllowedPaths[i] = "/" + strings.Join(kept, "/")
 	}
 	return nil
 }

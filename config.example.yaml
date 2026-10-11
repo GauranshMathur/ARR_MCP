@@ -123,7 +123,7 @@ services:
       url: http://192.168.10.28:3000
       apiKey: ${JELLYSTAT_API_KEY}
 
-  # Synology DSM (read-only tools). The account must be a NAS ADMINISTRATOR, so
+  # Synology DSM. The account must be a NAS ADMINISTRATOR, so
   # its password is full control of the NAS: use a dedicated account with a long
   # random password and no 2-factor. DSM serves HTTP on 5000; the password and the
   # session id cross the network unencrypted, so keep this on a trusted LAN.
@@ -132,3 +132,8 @@ services:
       url: http://192.168.10.30:5000
       username: your-dsm-admin
       password: ${SYNOLOGY_PASSWORD}
+      # Folders the file-changing tools (synology_create_folder, synology_rename,
+      # synology_copy_move) may touch. Absolute DSM paths, no "..", not "/". Unset or
+      # empty: those tools refuse everything. The account is a NAS administrator, so
+      # this list is the ONLY limit on file changes. Exact match, case included.
+      # allowedPaths: ["/NAS"]

@@ -20,10 +20,13 @@ import (
 // place, the way nzbCall keeps NZBGet's JSON-RPC envelope.
 //
 // The DSM account is a NAS administrator, so its password is full control of
-// the NAS. What this file can call is therefore the only limit: synoCall is
-// unexported, never exposed as a tool, and refuses any api/method/version that
-// is not in synoReadOps. Every entry there only reads. Starting and stopping a
-// File Station search or directory-size task is that API's own read mechanics.
+// the NAS. What this file can call is therefore the only limit, together with
+// the allowedPaths check in synology_write.go: synoCall is unexported, never
+// exposed as a tool, and refuses any api/method/version that is in neither
+// synoReadOps nor synoWriteOps. Every synoReadOps entry only reads (starting and
+// stopping a File Station search or directory-size task is that API's own read
+// mechanics). synoWriteOps holds the three File Station writes and nothing that
+// deletes.
 
 // synoOp names one DSM api, method and version.
 type synoOp struct {
@@ -128,6 +131,17 @@ var synoFileStationCodes = map[int]string{
 	419: "illegal file name",
 	421: "device or resource busy",
 	599: "no such task (it finished, was stopped, or the path does not exist)",
+	// Codes of the write APIs, from the File Station API guide.
+	1000: "failed to copy files or folders",
+	1001: "failed to move files or folders",
+	1002: "an error occurred at the destination",
+	1003: "a file already exists at the destination and no overwrite choice was given",
+	1004: "a file cannot overwrite a folder of the same name, or the reverse",
+	1006: "cannot copy or move a name with special characters to a FAT32 file system",
+	1007: "cannot copy or move a file bigger than 4 GB to a FAT32 file system",
+	1100: "failed to create the folder (it may already exist, or the parent may be missing)",
+	1101: "the number of folders in the parent would exceed the system limit",
+	1200: "failed to rename (the new name may already exist)",
 }
 
 var synoLoginCodes = map[int]string{
@@ -192,7 +206,7 @@ func (c *Client) synoLogin(ctx context.Context) (string, error) {
 // rather than strings, so no tool can ask for an arbitrary api or method.
 func synoCall[T any](ctx context.Context, c *Client, op synoOp, params url.Values) (T, error) {
 	var out T
-	if !synoReadOps[op] {
+	if !synoReadOps[op] && !synoWriteOps[op] {
 		return out, fmt.Errorf("synology %s %s v%d is not an allowed call", op.api, op.method, op.version)
 	}
 	sid, err := c.ensureSession(ctx, "", false)
@@ -742,10 +756,11 @@ type synoRawFile struct {
 	IsDir      bool    `json:"isdir"`
 	Code       flexInt `json:"code"`
 	Additional struct {
-		RealPath string  `json:"real_path"`
-		Size     flexInt `json:"size"`
-		Type     string  `json:"type"`
-		Owner    struct {
+		RealPath       string  `json:"real_path"`
+		Size           flexInt `json:"size"`
+		Type           string  `json:"type"`
+		MountPointType string  `json:"mount_point_type"`
+		Owner          struct {
 			User  string `json:"user"`
 			Group string `json:"group"`
 		} `json:"owner"`

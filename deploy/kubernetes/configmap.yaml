@@ -89,7 +89,7 @@ data:
           url: http://jellystat.jelly.svc.cluster.local:3000
           apiKey: ${JELLYSTAT_API_KEY}
 
-      # Synology DSM, read-only tools. The account must be a NAS administrator, so
+      # Synology DSM. The account must be a NAS administrator, so
       # its password is full control of the NAS. Plain HTTP on port 5000: the
       # password crosses the network unencrypted, so the cluster and the NAS must
       # share a trusted LAN.
@@ -98,3 +98,6 @@ data:
           url: http://192.168.10.30:5000
           username: your-dsm-admin
           password: ${SYNOLOGY_PASSWORD}
+          # Folders the file-changing tools may touch; unset or empty refuses them
+          # all. The account is a NAS administrator, so this is the ONLY limit.
+          # allowedPaths: ["/NAS"]
