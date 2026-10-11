@@ -1,11 +1,11 @@
 # ARR-MCP
 
-An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin and Jellystat — including **multiple instances of each**.
+An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Connect Claude, Cursor, VS Code or any other MCP client to Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin, Jellystat and a Synology NAS — including **multiple instances of each**.
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **309 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin and Jellystat — what you would otherwise do by clicking through each web UI
+- **319 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin, Jellystat and Synology DSM — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -126,6 +126,12 @@ older `X-Emby-Token` header and `api_key` query parameter are rejected.
 Jellystat (default port 3000) takes an API key: Settings → **API Keys** → add one. It is
 sent as the `X-Api-Token` header.
 
+Synology DSM (default port 5000 for HTTP, 5001 for HTTPS) takes the username and password of
+a DSM account. **That account has to be a NAS administrator** (DSM serves storage health only
+to administrators), so its password is full control of the NAS: treat it that way. It must
+not use 2-factor authentication, because there is nobody to type a code. See
+[Synology](#synology-10) before pointing ARR-MCP at a NAS.
+
 Every one of these is a *full-access* credential for that application. ARR-MCP never
 needs more than one credential per instance, and the [permission model](#permissions) is
 what narrows down what the model can actually do with it.
@@ -147,7 +153,7 @@ environment variables entirely, it does not merge with them.
 
 ### Environment variables (one instance per service)
 
-Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` — or, for `QBITTORRENT` and `NZBGET`,
+Set `<SERVICE>_URL` and `<SERVICE>_API_KEY` — or, for `QBITTORRENT`, `NZBGET` and `SYNOLOGY`,
 `<SERVICE>_USERNAME` and `<SERVICE>_PASSWORD`; `MAINTAINERR` needs only its URL — and
 run **without** `--config`:
 
@@ -173,6 +179,9 @@ JELLYFIN_URL=http://192.168.10.27:8096
 JELLYFIN_API_KEY=...
 JELLYSTAT_URL=http://192.168.10.28:3000
 JELLYSTAT_API_KEY=...
+SYNOLOGY_URL=http://192.168.10.30:5000
+SYNOLOGY_USERNAME=...
+SYNOLOGY_PASSWORD=...
 ```
 
 A service is configured only when **all** its variables are set; setting just some of
@@ -208,14 +217,14 @@ sonarr_search_series{query: "Severance", instance: "anime"}
 Rules the loader enforces at startup, so a mistake never surfaces mid-conversation:
 
 - Every instance needs a `name`, a `url` and its credential: an `apiKey` for the \*arr
-  services, Bazarr, Seerr, Jellyfin and Jellystat, a `username` and `password` for `qbittorrent` and `nzbget`, and
+  services, Bazarr, Seerr, Jellyfin and Jellystat, a `username` and `password` for `qbittorrent`, `nzbget` and `synology`, and
   nothing for `maintainerr`, which has no authentication. Supplying the wrong kind is an
   error, not a silent fallback.
 - Instance names must be unique within a service, and at most one may be `default`.
 - With several instances and no `default`, a tool call that omits `instance` fails with a
   message listing the valid names — it does not silently pick the first one.
 - Only `sonarr`, `radarr`, `prowlarr`, `bazarr`, `qbittorrent`, `nzbget`, `maintainerr`,
-  `seerr`, `jellyfin` and `jellystat` are accepted;
+  `seerr`, `jellyfin`, `jellystat` and `synology` are accepted;
   anything else is rejected rather than ignored, so a typo like `sonar:` is caught
   immediately.
 
@@ -598,6 +607,49 @@ client, device and play method. Pages hold 25 rows by default and at most 100.
 | `jellystat_library_items` — a library's items with play count; sort by Views ascending for what nobody watched | read |
 | `jellystat_views_over_time` — plays and minutes per library per day | read |
 
+### Synology (10)
+
+A Synology NAS running DSM 7, read-only: storage health and capacity, drive SMART status,
+resource use, and what is on disk through File Station. Every tool only reads. Each tool
+runs one fixed DSM API call; no tool takes an API or method name, so what the model can ask
+the NAS is exactly this table. Share, file and folder names are set by NAS users and are
+passed through verbatim, flagged as data, not instructions. Paths must be absolute, start
+with a share (`/NAS/Movies`) and contain no `..` segment; anything else is rejected before a
+request is sent. File and search pages hold 25 entries by default and at most 100. The search
+and folder-size tools run a File Station background task, wait a few seconds at most, always
+stop the task, and mark the result `partial` if the wait ran out.
+
+> **The account is a NAS administrator, and its password is full control of the NAS.** DSM
+> only serves storage information to administrators, and an administrator can change
+> shares, users, backups and the iSCSI volumes behind a Kubernetes cluster. ARR-MCP limits
+> itself to the calls below, but anyone who reads the configured password is not limited at
+> all: keep it out of images, logs and chat, give it a long random value, and use an account
+> that exists only for this. DSM's "No access" setting on a share is not a second fence,
+> since an administrator can lift it.
+>
+> **The connection is plain HTTP.** The URL is `http://<nas>:5000`: the password and the
+> session id cross the network unencrypted, so use this only on a LAN you trust and never
+> over the internet or a shared network. There is deliberately no option to skip TLS
+> verification or to add a CA.
+
+| Tool | Access |
+|---|---|
+| `synology_system_info` — model, DSM version, uptime, CPU, memory, temperature | read |
+| `synology_utilization` — CPU load, memory, network and disk I/O right now | read |
+| `synology_update_status` — whether a DSM update is waiting (only asks) | read |
+| `synology_storage_overview` — pools and volumes: status, total, used and free bytes | read |
+| `synology_list_disks` — each drive's model, status, SMART status, temperature, uncorrectable sectors | read |
+| `synology_list_shares` — the shared folders this account can see; paged | read |
+| `synology_list_files` — one folder's entries with size, modified time and owner; paged, sorted, filtered | read |
+| `synology_get_file_info` — one file or folder in detail | read |
+| `synology_search_files` — names below a folder, as a bounded File Station search | read |
+| `synology_dir_size` — total bytes, folders and files below a folder, as a bounded File Station task | read |
+
+Not here yet: changing anything on the NAS (creating folders, renaming, moving, copying) is
+issue #63, and deleting is issue #64. Hyper Backup task status and share snapshots were
+left out of this release: the NAS this was built against has no backup task and no snapshot
+to read, so neither response shape could be verified, and a guessed one is worse than none.
+
 ### What responses contain
 
 Upstream payloads are far too large to return as they arrive — a single Sonarr
@@ -787,6 +839,23 @@ Jellystat authenticates with the raw key in `X-Api-Token`, which is `AuthHeaderK
 `/api/getconfig` returns configuration. Left out on purpose: syncs, backup and restore,
 logs, every settings and API-key endpoint, purges and playback deletion.
 
+### Synology
+
+A Synology NAS is not \*arr-named and its API is not the \*arr contract, so it got its own
+call shape beside NZBGet's `nzbCall`: `synoCall` in `pkg/arr/synology.go`. Every DSM API is
+served from `/webapi/entry.cgi` and chosen by `api`, `version` and `method` form fields; the
+call is a `POST` with a form body so nothing sensitive is in a URL. Login is
+`SYNO.API.Auth` v7 with `format=sid`, and the session id is cached per instance like
+qBittorrent's cookie and sent as the `_sid` field. DSM answers HTTP 200 for failures, with
+`{"success":false,"error":{"code":N}}`, so the body is inspected on every call; a session
+error (105, 106, 107, 119) logs in once more and retries once. It needed one new auth scheme,
+`AuthDSM`, because the id travels in the body rather than a cookie or header.
+
+`synoCall` is unexported and refuses any api, method and version that is not in a fixed
+read-only set, so the code cannot reach `SYNO.Core.User`, `SYNO.Core.Group`,
+`SYNO.Core.ISCSI.*`, share permissions or any call that changes state. Writes and deletes
+are separate issues (#63, #64).
+
 ### Not planned: Plex
 
 Plex is not \*arr-named and does not speak the \*arr API contract: it uses its own token
@@ -854,10 +923,11 @@ var BazarrSpec = ServiceSpec{
 }
 ```
 
-Four auth schemes exist: `AuthHeaderKey` (the \*arr apps, Bazarr, Seerr, Jellyfin and Jellystat, Jellyfin
+Five auth schemes exist: `AuthHeaderKey` (the \*arr apps, Bazarr, Seerr, Jellyfin and Jellystat, Jellyfin
 setting `AuthHeaderFormat` to wrap the key as `MediaBrowser Token="%s"`), `AuthBasic`
 (NZBGet), `AuthSession` (qBittorrent's form login, with the session cookie cached per
-instance and refreshed once on a 403) and `AuthNone` (Maintainerr).
+instance and refreshed once on a 403), `AuthNone` (Maintainerr) and `AuthDSM` (Synology's
+form login, with the session id cached per instance and sent as a form field).
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please): conventional commits on `main` accumulate into a version-bump PR, and merging it tags the release and publishes multi-arch images to GHCR. Images are Trivy-scanned **before** push, so a vulnerable tag is never publicly pullable.
 

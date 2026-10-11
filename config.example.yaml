@@ -35,10 +35,10 @@ permissions:
   fallback: deny
 
 # Supported services: sonarr, radarr, prowlarr, bazarr, qbittorrent, nzbget,
-# maintainerr, seerr, jellyfin, jellystat.
+# maintainerr, seerr, jellyfin, jellystat, synology.
 # Anything else is rejected at startup rather than ignored, so a typo is caught
 # immediately. The *arr services, seerr, jellyfin and jellystat take an apiKey; the download clients
-# (qbittorrent, nzbget) take a username and password instead, and maintainerr,
+# and the NAS (qbittorrent, nzbget, synology) take a username and password instead, and maintainerr,
 # which has no authentication, takes only a url.
 #
 # Instance names must be unique within a service and are advertised to the model
@@ -122,3 +122,13 @@ services:
     - name: main
       url: http://192.168.10.28:3000
       apiKey: ${JELLYSTAT_API_KEY}
+
+  # Synology DSM (read-only tools). The account must be a NAS ADMINISTRATOR, so
+  # its password is full control of the NAS: use a dedicated account with a long
+  # random password and no 2-factor. DSM serves HTTP on 5000; the password and the
+  # session id cross the network unencrypted, so keep this on a trusted LAN.
+  synology:
+    - name: main
+      url: http://192.168.10.30:5000
+      username: your-dsm-admin
+      password: ${SYNOLOGY_PASSWORD}
