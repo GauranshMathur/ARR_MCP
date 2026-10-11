@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 )
 
 // AuthKind selects how credentials are attached to outbound requests.
@@ -353,28 +354,71 @@ const minRedactable = 8
 
 // redact removes credentials from text bound for logs or model-visible errors:
 // the API key, the password and, for session-authenticated specs, every session
-// id this instance has held, so no caller has to remember to name them. Each
-// secret is removed in the spellings an echo could use: raw, form-encoded, path-
-// encoded and JSON-escaped, with percent-encoding hex in either case.
+// id this instance has held, so no caller has to remember to name them.
 func (c *Client) redact(s string) string {
 	secrets := []string{c.creds.APIKey, c.creds.Password}
 	if c.spec.Auth == AuthSession || c.spec.Auth == AuthDSM {
 		secrets = append(secrets, c.session().known()...)
 	}
-	var spellings []string
+	// Longest first, so a secret that contains another is not left half-masked.
+	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
 	for _, secret := range secrets {
 		if len(secret) < minRedactable {
 			continue
 		}
-		j, _ := json.Marshal(secret)
-		spellings = append(spellings, secret, url.QueryEscape(secret), url.PathEscape(secret), strings.Trim(string(j), `"`))
-	}
-	// Longest first, so a long spelling is not left half-masked by a shorter one.
-	sort.Slice(spellings, func(i, j int) bool { return len(spellings[i]) > len(spellings[j]) })
-	for _, sp := range spellings {
-		s = regexp.MustCompile("(?i)"+regexp.QuoteMeta(sp)).ReplaceAllString(s, "***")
+		s = regexp.MustCompile(secretPattern(secret)).ReplaceAllString(s, "***")
 	}
 	return s
+}
+
+// secretPattern matches secret however an echo encodes it. An upstream may
+// encode each character its own way (percent-encode the backslash but not the
+// parenthesis, write "/" as "\/" in JSON), so a list of whole-string spellings
+// always misses one. Every character instead matches itself or any of its
+// percent, JSON or HTML-entity forms, in either letter case.
+func secretPattern(secret string) string {
+	var b strings.Builder
+	b.WriteString("(?i)")
+	for _, r := range secret {
+		alts := []string{regexp.QuoteMeta(string(r))}
+
+		var pct strings.Builder
+		for _, octet := range []byte(string(r)) {
+			fmt.Fprintf(&pct, "%%%02X", octet)
+		}
+		alts = append(alts, pct.String())
+
+		var esc strings.Builder
+		for _, unit := range utf16.Encode([]rune{r}) {
+			fmt.Fprintf(&esc, `\\u%04X`, unit)
+		}
+		alts = append(alts, esc.String(), fmt.Sprintf("&#%d;", r), fmt.Sprintf("&#x%X;", r))
+
+		switch r {
+		case '"':
+			alts = append(alts, `\\"`, "&quot;")
+		case '\\', '/':
+			alts = append(alts, `\\`+regexp.QuoteMeta(string(r)))
+		case ' ':
+			alts = append(alts, `\+`)
+		case '&':
+			alts = append(alts, "&amp;")
+		case '<':
+			alts = append(alts, "&lt;")
+		case '>':
+			alts = append(alts, "&gt;")
+		case '\'':
+			alts = append(alts, "&apos;")
+		case '\n':
+			alts = append(alts, `\\n`)
+		case '\r':
+			alts = append(alts, `\\r`)
+		case '\t':
+			alts = append(alts, `\\t`)
+		}
+		b.WriteString("(?:" + strings.Join(alts, "|") + ")")
+	}
+	return b.String()
 }
 
 // StatusError is returned when a service answers with an error status. It
