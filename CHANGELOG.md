@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.9.0...v1.9.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* **build:** build with Go 1.26.9 to clear three stdlib CVEs ([628c662](https://github.com/GauranshMathur/ARR_MCP/commit/628c662dd218cc40bacc28025aad37609e2c70e1))
+
 ## [1.9.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.8.0...v1.9.0) (2026-10-11)
 
 
