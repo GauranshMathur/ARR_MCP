@@ -20,6 +20,7 @@ func registerAll(s *Server) {
 	registerSeerr(s)
 	registerJellyfin(s)
 	registerJellystat(s)
+	registerSynology(s)
 
 	registerOperations(s, "sonarr", arr.SonarrSpec, operationOpts{hasQueue: true})
 	registerOperations(s, "radarr", arr.RadarrSpec, operationOpts{hasQueue: true})
