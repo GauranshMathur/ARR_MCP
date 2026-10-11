@@ -680,26 +680,36 @@ synology:
 - The check runs before login and before any request. A refused call sends nothing to the NAS.
 - **Links.** A name can be a link: `/NAS/x -> /volume1/kube` is textually inside `/NAS`. After the
   name check, and before anything is changed, the tools read the share's real path
-  (`list_share`) and ask DSM (File Station `getinfo`, a read) for the real path of the allowed
-  path, of every existing path the call touches (the parent folder, the entry to rename, every
-  copy/move source and the destination), and of the entry the write will land on (the new
-  folder or new name; for copy and move, the destination plus each source's name). Each answer
-  must echo the path asked, and every real path must be exactly the share's real path plus the
-  rest of the name, so a link anywhere in the chain, a link at the allowed root itself, or a
-  link that points back inside the fence is refused. A mount point, a link type, a failed
-  lookup, a share missing from the answer or any unexpected answer refuses the call, and nothing
-  is changed. A landing entry that does not exist is fine; one that exists must pass the same
-  checks (copy, move) or is refused as already existing (create, rename, so a case-only rename
-  is refused too). Not yet confirmed on a real NAS: the one tested so far has no link, so it is
-  assumed, not verified, that DSM reports a link's target in `real_path`; a link that DSM
-  reports as its own plain path, or a dangling link DSM reports as missing, would pass. The live
-  test plan has steps that check. Remaining gap: this is check-then-act, so a link swapped in
+  (`list_share`) and ask DSM (File Station `getinfo`, a read) about the allowed path, every
+  existing path the call touches (the parent folder, the entry to rename and its parent, every
+  copy/move source and the destination) and the entry the write will land on (the new folder or
+  new name; for copy and move, the destination plus each source's name). Observed on DSM 7.4.1 in
+  a live test on 2026-10-11: a symbolic link is hidden from folder listings and `getinfo`
+  answers it with only `{"code":407}` (no `real_path`, no type), whether it is absolute or
+  relative, points to a folder or a file, inside the share or outside it, or dangles. A path
+  through a link gives 407 for an existing child but 408 (missing) for a missing child, so a
+  missing landing entry is only trusted because its parent was itself checked and found plain.
+  **What actually refuses a link is therefore the rule that any answer other than success (or
+  "missing" for a landing entry) refuses the call.** The exact real-path comparison against the
+  share's real path, and the checks on a mount point or link type, are a backstop that has never
+  been seen to trip on this NAS. A refused call reads `could not check "<path>" for links: ...
+  operation not permitted (code 407); nothing was changed`. In the live test a write was refused
+  for create under a link, copy into a link, copy from a link and from a child of one, rename of
+  a link, a landing entry that is a link (create, rename, copy and move, with overwrite false and
+  true) and a link as the `allowedPaths` root; the target share was unchanged. This was observed
+  on one NAS and one DSM version. Still open: this is check-then-act, so a link swapped in
   between the check and the write is not caught, and links nested inside a folder being copied
-  or moved are handled as DSM sees fit. `allowedPaths` guards against mistakes and planted
-  links; it is not a sandbox against someone with write access who races the tool.
-- `overwrite` defaults to false: files already in the destination are skipped, not replaced. A
-  copy or move runs as a File Station task for up to about two minutes and is stopped after;
-  `partial: true` means it was cut off and some files may be done. It is never started twice.
+  or moved were not tested and are handled as DSM sees fit. `allowedPaths` guards against
+  mistakes and planted links; it is not a sandbox against someone with write access who races
+  the tool. A case-only rename is refused (the target "exists").
+- `overwrite` defaults to false: DSM then leaves files that already exist in the destination
+  untouched and does not report which; for a move, the source of a skipped file stays where it
+  was (observed), so check with `synology_list_files`. A copy or move runs as a File Station
+  task for up to about two minutes and is stopped after; `partial: true` means it was cut off
+  and some files may be done. It is never started twice. The result carries no byte counts: DSM
+  reported 0 for them on every copy and move, including ones that copied data. Observed after
+  copies and moves: copied files are owned by the DSM account, and copied or moved files had
+  mode 777 afterwards (a moved file kept its owner but went from 644 to 777).
 
 The write tools are hidden when the instance's permission mode is `readonly`, and they prompt
 in `confirm` mode like any other write tool.

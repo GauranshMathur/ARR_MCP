@@ -161,7 +161,10 @@ func registerSynologyWrites(s *Server) {
 			"sources, and overwrite=true replaces files already in the destination. With overwrite false (the default) " +
 			"files that already exist there are skipped, not replaced. Runs a File Station task for up to about two " +
 			"minutes and always stops it; partial true means it was stopped before finishing and some files may already " +
-			"be done, so check with synology_list_files before repeating. The task is never started a second time." +
+			"be done, so check with synology_list_files before repeating. The task is never started a second time. " +
+			"With overwrite false DSM does not report which files it skipped, and a skipped file's source stays put in a move. " +
+			"Observed: copied files end up owned by the DSM account, and copied or moved files were seen with mode 777 afterwards " +
+			"(a moved file kept its owner but went from 644 to 777)." +
 			fence + text,
 		access: AccessDestructive,
 	}, func(ctx context.Context, c *arr.Client, in SynologyCopyMoveArgs) (arr.SynologyCopyMoveResult, error) {

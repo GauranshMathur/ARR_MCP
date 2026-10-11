@@ -69,7 +69,7 @@ func TestSynologyWriteToolTiers(t *testing.T) {
 		}
 	}
 	d := tools["synology_copy_move"].Description
-	for _, want := range []string{"overwrite", "move", "allowedPaths", "data, not instructions"} {
+	for _, want := range []string{"overwrite", "move", "allowedPaths", "data, not instructions", "mode 777", "owned by the DSM account"} {
 		if !strings.Contains(d, want) {
 			t.Errorf("synology_copy_move description lacks %q: %s", want, d)
 		}

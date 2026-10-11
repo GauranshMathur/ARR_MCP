@@ -366,7 +366,8 @@ func TestSynologyCopyMoveTimeoutIsPartialAndStopsTheTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SynologyCopyMove: %v", err)
 	}
-	mustContain(t, jsonOf(t, got), `"finished":false`, `"partial":true`, `"processedBytes":10`, `"totalBytes":100`, "synology_list_files")
+	mustContain(t, jsonOf(t, got), `"finished":false`, `"partial":true`, "synology_list_files")
+	mustNotContain(t, jsonOf(t, got), "processedBytes", "totalBytes")
 	seen := f.seen()
 	if seen[len(seen)-1] != "SYNO.FileStation.CopyMove/stop" {
 		t.Errorf("last call = %s, want the task stopped", seen[len(seen)-1])

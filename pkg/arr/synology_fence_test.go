@@ -254,3 +254,81 @@ func TestSynologyWriteSendsExactlyTheCheckedStrings(t *testing.T) {
 		t.Errorf("the checked target %q is not the parent + name that was sent", asked[len(asked)-1])
 	}
 }
+
+// DSM answers a path THROUGH a link with 407 for an existing child but 408 for a
+// missing one (observed live), so "408 means absent" for a landing entry is only
+// sound because the landing entry's parent was itself found plain. Each tool
+// must check that parent: here the parent answers 407, the landing entry 408.
+func TestSynologyLandingEntryAbsenceIsOnlyTrustedWhenItsParentIsPlain(t *testing.T) {
+	ctx := context.Background()
+	parentLinked := func(parent, landing string) func(string) string {
+		return func(p string) string {
+			switch p {
+			case parent:
+				return `{"path":` + `"` + p + `","code":407}`
+			case landing:
+				return missingEntry(p)
+			}
+			return getinfoEntry(p, "/volume1"+p, "", "")
+		}
+	}
+	for name, tc := range map[string]struct {
+		parent, landing string
+		call            func(f *dsmFake) error
+	}{
+		"create": {"/NAS/p", "/NAS/p/x", func(f *dsmFake) error {
+			_, err := SynologyCreateFolder(ctx, f.client(), allowNAS, "/NAS/p", "x")
+			return err
+		}},
+		// The renamed entry itself answers fine here, so only the parent can refuse.
+		"rename": {"/NAS/p", "/NAS/p/b", func(f *dsmFake) error {
+			_, err := SynologyRename(ctx, f.client(), allowNAS, "/NAS/p/a", "b")
+			return err
+		}},
+		"copy": {"/NAS/d", "/NAS/d/a", func(f *dsmFake) error {
+			_, err := SynologyCopyMove(ctx, f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/d"})
+			return err
+		}},
+		"move with overwrite": {"/NAS/d", "/NAS/d/a", func(f *dsmFake) error {
+			_, err := SynologyCopyMove(ctx, f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/d", Move: true, Overwrite: true})
+			return err
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newShareDSM(t)
+			scriptGetInfo(f, parentLinked(tc.parent, tc.landing))
+			refusedBeforeWrite(t, f, tc.call(f))
+		})
+	}
+}
+
+// The rule is enforced, not just arranged by the callers: a target whose parent
+// is not among the existing paths checked refuses, and nothing is sent.
+func TestSynologyVerifyRefusesATargetWhoseParentWasNotChecked(t *testing.T) {
+	f := newWriteDSM(t)
+	err := synoVerifyRealPaths(context.Background(), f.client(),
+		[]synoFenced{{"/NAS/a", "/NAS"}}, []synoFenced{{"/NAS/other/x", "/NAS"}}, false)
+	if err == nil {
+		t.Fatal("accepted a target with an unchecked parent")
+	}
+	if n := len(f.requests()); n != 0 {
+		t.Errorf("%d requests sent, want none", n)
+	}
+}
+
+func TestSynologyCopyMoveResultClaimsNoByteCountsAndNoOutcomeForSkips(t *testing.T) {
+	fastPolling(t, 5)
+	f := copyFake(t, cmFinished)
+	got, err := SynologyCopyMove(context.Background(), f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/d", Move: true})
+	if err != nil {
+		t.Fatalf("SynologyCopyMove: %v", err)
+	}
+	out := jsonOf(t, got)
+	mustNotContain(t, out, "processedBytes", "totalBytes", "were skipped")
+	mustContain(t, out, "does not report which", "stays where it was", "synology_list_files")
+	g, err := SynologyCopyMove(context.Background(), f.client(), allowNAS, SynologyCopyMoveRequest{Sources: []string{"/NAS/a"}, Destination: "/NAS/d", Overwrite: true})
+	if err != nil {
+		t.Fatalf("SynologyCopyMove: %v", err)
+	}
+	mustNotContain(t, jsonOf(t, g), "does not report which")
+}
