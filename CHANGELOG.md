@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.8.0...v1.9.0) (2026-10-11)
+
+
+### Features
+
+* **jellyfin:** add Jellyfin media server support ([fdd9402](https://github.com/GauranshMathur/ARR_MCP/commit/fdd94026b75e1ebc5a536a87cc0353ca0dd7e3a9))
+
+
+### Bug Fixes
+
+* **jellyfin:** withhold the attempted username from failed logins ([fdd9402](https://github.com/GauranshMathur/ARR_MCP/commit/fdd94026b75e1ebc5a536a87cc0353ca0dd7e3a9))
+
 ## [1.8.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.7.0...v1.8.0) (2026-10-04)
 
 
