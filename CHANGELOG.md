@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.11.0...v1.12.0) (2026-10-11)
+
+
+### Features
+
+* **synology:** add File Station create, rename and copy/move behind allowedPaths ([27e0840](https://github.com/GauranshMathur/ARR_MCP/commit/27e0840ad4942a0ce4682aa63546c218cefb0b3e))
+* **synology:** add the allowedPaths config field ([9bd3161](https://github.com/GauranshMathur/ARR_MCP/commit/9bd31610be1ee64a13c98f9462aa4784f977d77b))
+* **synology:** register synology_create_folder, synology_rename and synology_copy_move ([b7de66e](https://github.com/GauranshMathur/ARR_MCP/commit/b7de66edc66e040812127d9983e60c4c7df3047e))
+
+
+### Bug Fixes
+
+* **synology:** anchor the link check to the share and check what a write lands on ([3719fb2](https://github.com/GauranshMathur/ARR_MCP/commit/3719fb2721a2d6a26272d57762bc7a59bf8a8f54))
+* **synology:** check the landing entry's parent, drop byte counts, reword the skip note ([b10b44b](https://github.com/GauranshMathur/ARR_MCP/commit/b10b44b5c2421fa01fb4273071b4f02a026e6bd1))
+* **synology:** refuse write paths that resolve through a link or mount ([cef3ca4](https://github.com/GauranshMathur/ARR_MCP/commit/cef3ca45a8858714b258fa6c3d43700f763b12ba))
+
 ## [1.11.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.10.0...v1.11.0) (2026-10-11)
 
 
