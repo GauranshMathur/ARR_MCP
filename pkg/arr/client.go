@@ -87,6 +87,15 @@ var (
 		Name: "jellyfin", BasePath: "", StatusPath: "/System/Info",
 		Auth: AuthHeaderKey, AuthHeader: "Authorization", AuthHeaderFormat: `MediaBrowser Token="%s"`,
 	}
+	// JellystatSpec describes Jellystat, which takes the raw key in x-api-token
+	// (backend/server.js authenticate). Its routes sit under /api and /stats, so
+	// there is no base path. The status path is /stats/getLibraryOverview: it
+	// answers 200 with a valid key and 403 with a wrong one, unlike
+	// /auth/isConfigured (open) and /api/getconfig (returns configuration).
+	JellystatSpec = ServiceSpec{
+		Name: "jellystat", BasePath: "", StatusPath: "/stats/getLibraryOverview",
+		Auth: AuthHeaderKey, AuthHeader: "X-Api-Token",
+	}
 )
 
 // defaultTimeout bounds ordinary reads and fire-and-forget commands.
