@@ -303,4 +303,6 @@ Need detail
 
 - Full per-client reference: [docs/clients.md](clients.md)
 - Kubernetes manifests: [deploy/kubernetes/](../deploy/kubernetes/)
-- Configuration reference and tool list: [README](../README.md)
+- Configuration reference: [docs/configuration.md](configuration.md)
+- Tool list: [docs/tools/](tools/README.md)
+- Troubleshooting: [docs/troubleshooting.md](troubleshooting.md)

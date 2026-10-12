@@ -41,7 +41,7 @@ Adding a service should mean *describing* it, not writing a new client.
 2. Add the service name to `config.KnownServices` in `pkg/config/loader.go` and to the `specs` map in `cmd/arr-mcp/main.go`. If it authenticates with a username and password rather than an API key, add it to `serviceCredentials` too — that drives config validation and the `<SERVICE>_USERNAME`/`<SERVICE>_PASSWORD` env fallback.
 3. Add `pkg/arr/<service>.go` with typed calls, and `pkg/arr/<service>_test.go` using `fakeService` from `client_test.go`. Three call shapes exist: REST services use `GetJSON`/`Post`/`PostForm`; NZBGet's JSON-RPC goes through `nzbCall` in `nzbget.go`; Synology's form calls go through `synoCall` in `synology.go`, which is unexported and only runs the api/method/version triples listed in `synoReadOps`. DSM answers failures with HTTP 200, so never trust the status; `synoCall` reads `success` and the error code.
 4. Add `pkg/server/register_<service>.go` and `pkg/server/tools_<service>.go` (input/output structs), and call the register function from `registerAll`. Server-level tests go in `register_<service>_test.go`, not `server_test.go`.
-5. Add the service to `README.md`, `config.example.yaml`, `.env.example` and `deploy/kubernetes/`.
+5. Add a `docs/tools/<service>.md` page, a row in `docs/tools/README.md` and in the `README.md` services table (and update the tool count there), then add the service to `docs/configuration.md`, `config.example.yaml`, `.env.example` and `deploy/kubernetes/`.
 
 If a service does not fit any existing auth scheme, that is a signal — say so before adding one. The three that exist beyond `AuthHeaderKey` were added deliberately, one each.
 
@@ -79,7 +79,7 @@ git worktree add .claude/worktrees/<name> -b feat/<name> origin/main
 
 Branch from `origin/main` unless the work depends on an unmerged branch; then base on that branch and open the PR stacked on it. GitHub retargets stacked PRs automatically when the base merges.
 
-Keep each branch to its own files where possible: new services get their own `register_<service>.go`, `tools_<service>.go` and test files, so parallel worktrees only ever conflict on the one-line `registerAll` entry and their own README section.
+Keep each branch to its own files where possible: new services get their own `register_<service>.go`, `tools_<service>.go` and test files, so parallel worktrees only ever conflict on the one-line `registerAll` entry and the shared services tables in `README.md` and `docs/tools/README.md`.
 
 ## Releasing
 
