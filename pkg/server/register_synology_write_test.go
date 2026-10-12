@@ -73,8 +73,8 @@ func TestSynologyWriteToolTiers(t *testing.T) {
 		}
 	}
 	dd := tools["synology_delete_files"].Description
-	for _, want := range []string{"PERMANENT", "not verified", "#recycle", "recursive", "allowedPaths", "data, not instructions",
-		"cannot be seen or checked", "synology_list_files", "never started a second time"} {
+	for _, want := range []string{"permanent", "Observed on DSM 7.4.1", "#recycle", "recursive", "allowedPaths", "data, not instructions",
+		"cannot see or check links", "synology_list_files", "never started a second time", "still there"} {
 		if !strings.Contains(dd, want) {
 			t.Errorf("synology_delete_files description lacks %q: %s", want, dd)
 		}
@@ -177,7 +177,7 @@ func TestSynologyWriteToolsCallTheRightApiVersionAndMethod(t *testing.T) {
 		{"synology_copy_move", map[string]any{"sources": []any{"/NAS/Scratch/B"}, "destination": "/NAS/Scratch", "operation": "copy"},
 			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.CopyMove v3 start", "SYNO.FileStation.CopyMove v3 status", "SYNO.FileStation.CopyMove v3 stop"}, `"overwrite":false`},
 		{"synology_delete_files", map[string]any{"paths": []any{"/NAS/Scratch/A"}},
-			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Delete v2 start", "SYNO.FileStation.Delete v2 status", "SYNO.FileStation.Delete v2 stop"}, `"recursive":false`},
+			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Delete v2 start", "SYNO.FileStation.Delete v2 status", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Delete v2 stop"}, `"recursive":false`},
 	} {
 		before := len(rec.keys())
 		body := callSynology(t, cs, tc.tool, tc.args)

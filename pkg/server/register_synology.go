@@ -178,18 +178,23 @@ func registerSynologyWrites(s *Server) {
 	})
 	register(s, svc, spec, toolMeta{
 		name: "synology_delete_files",
-		description: "Delete files and folders, up to 10 paths per call. Treat the delete as PERMANENT. On a share with the " +
-			"recycle bin enabled DSM may keep a copy in that share's #recycle folder; this is not verified. Runs a File Station " +
-			"delete task for up to about two minutes and always stops it; partial true means it was stopped before finishing and " +
-			"some entries may already be gone, so check with synology_list_files before repeating. The task is never started a " +
-			"second time; if the start is ambiguous this fails with a message to check with synology_list_files. " +
-			"recursive is sent to DSM on every call and is false unless you pass true. With false DSM deletes only the " +
-			"entries named and, per the File Station guide, errors on a folder that contains anything; this tool does not list " +
-			"the folder first. With true a folder and everything in it is deleted. Links inside a recursively deleted folder " +
-			"cannot be seen or checked by this tool, and how DSM treats them (removing the link or its target) is not verified. " +
-			"Always refused: a share root, an allowedPaths entry itself (only things below it can be deleted), anything in a " +
-			"#recycle folder, a path that does not exist or is a link, duplicate paths. All paths are checked before anything " +
-			"is sent; one refusal fails the whole call. The result reports DSM's own counts and the paths asked." +
+		description: "Delete files and folders, up to 10 paths per call. Treat the delete as permanent unless you know the " +
+			"share has the recycle bin on. Observed on DSM 7.4.1: on a share with the recycle bin enabled, deleted files are " +
+			"moved to that share's #recycle folder, mirroring their path (links and empty folders are not kept); on a share " +
+			"without it the delete is permanent. This tool never deletes from #recycle, so it cannot empty the bin. Runs a " +
+			"File Station delete task for up to about two minutes and always stops it; partial true means it was stopped " +
+			"before finishing and some entries may already be gone, so check with synology_list_files before repeating. " +
+			"The task is never started a second time; if the start is ambiguous this fails with a message to check with " +
+			"synology_list_files. recursive is sent to DSM on every call and is false unless you pass true. With false, DSM " +
+			"silently skips a folder that contains anything (observed: the task reports finished and nothing is deleted); " +
+			"after DSM reports finished, this tool asks DSM whether each path still exists and returns an ERROR naming what " +
+			"was deleted and what is still there. With true a folder and everything in it is deleted. Observed: links inside " +
+			"a recursively deleted folder were removed and their targets left alone (links to a folder and to a file), but " +
+			"this tool cannot see or check links inside a folder. Always refused: a share root, an allowedPaths entry itself " +
+			"(only things below it can be deleted), anything in a #recycle folder, a path that does not exist or is a link, " +
+			"duplicate paths. All paths are checked before anything is sent; one refusal fails the whole call. The result " +
+			"lists deleted (DSM then answered no such file) and remaining paths; DSM's own processed and total counts are " +
+			"not reported because they were 0 for deletes that worked." +
 			fence + text,
 		access: AccessDestructive,
 	}, func(ctx context.Context, c *arr.Client, in SynologyDeleteArgs) (arr.SynologyDeleteResult, error) {

@@ -722,22 +722,29 @@ synology:
   blocking `delete` method is not used. The start is never sent twice: an ambiguous start (transport
   error, no task id) is an error that says to check with `synology_list_files`.
   - **`recursive`.** The File Station API guide (2023.03 revision, Delete section) gives `recursive` a
-    default of **true**, and says that with `false` "if a deleted folder contains any file, an error
-    occurs because the folder can't be directly deleted" (error 900, "more information in the errors
-    object"; the guide does not say whether that arrives from `start` or `status`). So the tool sends
-    `recursive` explicitly on every start: `false` unless the caller passes `recursive: true`. It relies
-    on DSM's error for a non-empty folder rather than listing it first, since a listing cannot see
-    links. That DSM behaviour is from the guide, not yet observed on this NAS.
-  - **Treat a delete as permanent.** The guide says nothing about the recycle bin. The `NAS` share has
-    it enabled (`/NAS/#recycle`), but whether a File Station API delete lands there or removes the entry
-    outright has not been observed: on a share with the recycle bin enabled DSM may keep a copy in
-    `#recycle`; not verified. The tool never deletes from `#recycle` itself.
-  - **Links inside a recursive delete.** A link inside a folder deleted with `recursive: true` cannot be
-    seen or checked by this tool (links are hidden from listings), and how DSM treats it, removing the
-    link or its target, is not verified.
-  - The result reports DSM's own `processed` and `total` counts (accurate progress is requested, so
-    `total` is -1 while DSM is still counting), the paths asked, and `partial: true` when the wait
-    (about two minutes) ran out and the task was stopped; then some entries may already be gone.
+    default of **true**, so the tool sends it explicitly on every start: `false` unless the caller passes
+    `recursive: true`. The guide says that with `false` an error occurs on a folder that contains
+    anything. **Observed on DSM 7.4.1, DSM does not error:** it accepts the start, reports the task
+    finished with 0 of 0 processed, and leaves the folder and its contents in place. So the tool does not
+    trust `finished`: after DSM reports it, one read-only `getinfo` over all the paths asked decides the
+    outcome (per-entry code 408, no such file, means deleted). If anything is still there the call
+    returns an **error** naming what was deleted and what remains, and saying a folder that contains
+    anything is not deleted unless `recursive` is true. If that check itself fails, the error says DSM
+    reported the task finished but the outcome could not be confirmed. The task is never started again.
+  - **Recycle bin (observed on DSM 7.4.1, one NAS).** On a share with the recycle bin enabled (`NAS`),
+    deleted files are moved to that share's `#recycle` folder, mirroring their path
+    (`/NAS/x/f.txt` to `/NAS/#recycle/x/f.txt`), whole trees with their structure; links and empty
+    folders are removed and not kept there. Other shares have no bin, so a delete there is permanent.
+    Treat a delete as permanent unless you know the share has the bin on. The tool never deletes from
+    `#recycle`, so it cannot empty the bin.
+  - **Links inside a recursive delete.** Observed: in a folder deleted with `recursive: true`, a relative
+    link to a folder, a link to a file and an absolute link were removed and their targets survived. The
+    tool itself still cannot see or check links inside a folder (they are hidden from listings).
+  - The result lists `deleted` (paths DSM then answered with code 408) and `remaining` (every other
+    asked path), always as arrays, plus `finished` and `partial`. DSM's own `processed_num` and `total`
+    are not reported: they were 0 and 0 for deletes that worked, so they cannot tell a no-op from a
+    success. `partial: true` means the wait (about two minutes) ran out and the task was stopped; some
+    entries may already be gone, and `deleted` and `remaining` are filled from a best-effort check.
 
 The write tools are hidden when the instance's permission mode is `readonly`, and they prompt
 in `confirm` mode like any other write tool.

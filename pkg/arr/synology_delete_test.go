@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 )
 
 const (
-	delRunning  = `{"success":true,"data":{"finished":false,"processed_num":1,"total":4,"path":"/NAS/a","processing_path":"/NAS/a/f1"}}`
+	delRunning  = `{"success":true,"data":{"finished":false,"processed_num":0,"total":0,"path":"/NAS/a","processing_path":"/NAS/a/f1"}}`
 	delFinished = `{"success":true,"data":{"finished":true,"processed_num":4,"total":4,"path":"/NAS/a","processing_path":"/NAS/a/f4"}}`
 )
 
@@ -31,7 +32,20 @@ func deleteFake(t *testing.T, statuses ...string) *dsmFake {
 	f.handlers["SYNO.FileStation.Delete/status"] = func(n int, _ url.Values) string {
 		return statuses[min(n-1, len(statuses)-1)]
 	}
+	afterDelete(f)
 	return f
+}
+
+// afterDelete scripts getinfo as the NAS answers it: every path is there until
+// the delete start arrives, and then missing (408, observed live) except the
+// paths in stay, which DSM left in place.
+func afterDelete(f *dsmFake, stay ...string) {
+	scriptGetInfo(f, func(p string) string {
+		if f.calls["SYNO.FileStation.Delete/start"] > 0 && !slices.Contains(stay, p) {
+			return missingEntry(p)
+		}
+		return getinfoEntry(p, "/volume1"+p, "", "")
+	})
 }
 
 func del(f *dsmFake, allowed []string, recursive bool, paths ...string) (SynologyDeleteResult, error) {
@@ -215,15 +229,18 @@ func TestSynologyDeleteAsksAboutEveryPathBeforeTheSingleStart(t *testing.T) {
 			asked = append(asked, r.form.Get("path"))
 		}
 	}
-	if len(asked) != 1 {
-		t.Fatalf("getinfo requests = %d, want 1", len(asked))
+	if len(asked) != 2 {
+		t.Fatalf("getinfo requests = %d, want the link check and one confirmation", len(asked))
+	}
+	if want := `["/NAS/a","/NAS/b","/NAS/c, 1.mkv"]`; asked[1] != want {
+		t.Errorf("confirmation asked %s, want %s", asked[1], want)
 	}
 	for _, p := range []string{`"/NAS/a"`, `"/NAS/b"`, `"/NAS/c, 1.mkv"`} {
 		if !strings.Contains(asked[0], p) {
 			t.Errorf("getinfo did not ask about %s: %s", p, asked[0])
 		}
 	}
-	want := "SYNO.FileStation.List/list_share,SYNO.FileStation.List/getinfo,SYNO.FileStation.Delete/start,SYNO.FileStation.Delete/status,SYNO.FileStation.Delete/stop"
+	want := "SYNO.FileStation.List/list_share,SYNO.FileStation.List/getinfo,SYNO.FileStation.Delete/start,SYNO.FileStation.Delete/status,SYNO.FileStation.List/getinfo,SYNO.FileStation.Delete/stop"
 	if g := strings.Join(f.seen(), ","); g != want {
 		t.Errorf("calls = %s\n want %s", g, want)
 	}
@@ -252,7 +269,8 @@ func TestSynologyDeleteStartAlwaysCarriesRecursive(t *testing.T) {
 				t.Error("start request has no recursive field")
 			}
 			mustContain(t, jsonOf(t, got), fmt.Sprintf(`"recursive":%v`, recursive), `"finished":true`, `"partial":false`,
-				`"processed":4`, `"total":4`, `"paths":["/NAS/a, 1.mkv","/NAS/c"]`)
+				`"paths":["/NAS/a, 1.mkv","/NAS/c"]`, `"deleted":["/NAS/a, 1.mkv","/NAS/c"]`, `"remaining":[]`)
+			mustNotContain(t, jsonOf(t, got), "processed", "total", "processingPath")
 			for _, r := range f.requests() {
 				if m := r.form.Get("method"); m == "status" || m == "stop" {
 					if r.form.Get("taskid") != "FileStation_DEL" || r.form.Get("version") != "2" {
@@ -284,7 +302,7 @@ func TestSynologyDeleteTimeoutIsPartialAndStopsTheTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SynologyDelete: %v", err)
 	}
-	mustContain(t, jsonOf(t, got), `"finished":false`, `"partial":true`, "synology_list_files", `"processed":1`)
+	mustContain(t, jsonOf(t, got), `"finished":false`, `"partial":true`, "synology_list_files", `"deleted":["/NAS/a"]`, `"remaining":[]`)
 	seen := f.seen()
 	if seen[len(seen)-1] != "SYNO.FileStation.Delete/stop" {
 		t.Errorf("last call = %s, want the task stopped", seen[len(seen)-1])
@@ -376,7 +394,7 @@ func TestSynologyDeleteResultClaimsNothingBeyondWhatDSMSaid(t *testing.T) {
 		t.Fatalf("SynologyDelete: %v", err)
 	}
 	out := jsonOf(t, got)
-	mustNotContain(t, out, "recycle", "permanent", "deleted\"", "removed")
+	mustNotContain(t, out, "recycle", "permanent", "removed")
 	if got.Note != "" {
 		t.Errorf("note = %q on a finished delete, want none", got.Note)
 	}
@@ -390,4 +408,129 @@ func TestSynologyDeleteErrorsNeverCarryTheCredentials(t *testing.T) {
 		t.Fatal("want an error")
 	}
 	mustNotContain(t, err.Error(), dsmTestPass, "SID-")
+}
+
+// The live case: DSM accepts a non-recursive delete of a non-empty folder, says
+// finished with nothing processed, and leaves the folder. That is an error.
+func TestSynologyDeleteFinishedButFolderStillThereIsAnError(t *testing.T) {
+	fastPolling(t, 5)
+	f := deleteFake(t, `{"success":true,"data":{"finished":true,"processed_num":0,"total":0,"path":"/NAS/dir","processing_path":""}}`)
+	afterDelete(f, "/NAS/dir")
+	got, err := del(f, allowNAS, false, "/NAS/dir")
+	if err == nil {
+		t.Fatalf("want an error, got %+v", got)
+	}
+	mustContain(t, err.Error(), "/NAS/dir", "still there", "recursive")
+	if n := deleteStartsOf(f); n != 1 {
+		t.Errorf("starts = %d, want exactly 1", n)
+	}
+}
+
+func TestSynologyDeleteMixedBatchErrorNamesBothLists(t *testing.T) {
+	fastPolling(t, 5)
+	f := deleteFake(t, delFinished)
+	afterDelete(f, "/NAS/dir")
+	_, err := del(f, allowNAS, false, "/NAS/file", "/NAS/dir")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	mustContain(t, err.Error(), "deleted", "/NAS/file", "still there", "/NAS/dir", "recursive")
+	if n := deleteStartsOf(f); n != 1 {
+		t.Errorf("starts = %d, want exactly 1", n)
+	}
+}
+
+func TestSynologyDeleteAllMissingAfterwardsIsSuccessWithDeletedFilled(t *testing.T) {
+	fastPolling(t, 5)
+	f := deleteFake(t, delFinished)
+	got, err := del(f, allowNAS, true, "/NAS/a", "/NAS/b")
+	if err != nil {
+		t.Fatalf("SynologyDelete: %v", err)
+	}
+	mustContain(t, jsonOf(t, got), `"deleted":["/NAS/a","/NAS/b"]`, `"remaining":[]`, `"finished":true`)
+	if n := deleteStartsOf(f); n != 1 {
+		t.Errorf("starts = %d, want 1", n)
+	}
+}
+
+// Only a 408 proves a path is gone: another code, a path that is not echoed,
+// or a wrong entry count is not confirmation.
+func TestSynologyDeleteOnlyA408ConfirmsDeletion(t *testing.T) {
+	fastPolling(t, 5)
+	for name, entry := range map[string]func(p string) string{
+		"other code":  func(p string) string { return fmt.Sprintf(`{"path":%q,"code":407}`, p) },
+		"wrong echo":  func(p string) string { return missingEntry(p + "x") },
+		"empty entry": func(p string) string { return `{}` },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := deleteFake(t, delFinished)
+			scriptGetInfo(f, func(p string) string {
+				if f.calls["SYNO.FileStation.Delete/start"] > 0 {
+					return entry(p)
+				}
+				return getinfoEntry(p, "/volume1"+p, "", "")
+			})
+			if _, err := del(f, allowNAS, true, "/NAS/a"); err == nil {
+				t.Fatal("want an error")
+			}
+			if n := deleteStartsOf(f); n != 1 {
+				t.Errorf("starts = %d, want exactly 1", n)
+			}
+		})
+	}
+}
+
+func TestSynologyDeleteConfirmationFailureIsAnErrorThatSaysSo(t *testing.T) {
+	fastPolling(t, 5)
+	for name, body := range map[string]string{
+		"DSM error":   `{"success":false,"error":{"code":1001}}`,
+		"wrong count": `{"success":true,"data":{"files":[]}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := deleteFake(t, delFinished)
+			pre := f.handlers["SYNO.FileStation.List/getinfo"]
+			f.handlers["SYNO.FileStation.List/getinfo"] = func(n int, form url.Values) string {
+				if f.calls["SYNO.FileStation.Delete/start"] > 0 {
+					return body
+				}
+				return pre(n, form)
+			}
+			_, err := del(f, allowNAS, true, "/NAS/a")
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			mustContain(t, err.Error(), "finished", "could not be confirmed", "synology_list_files")
+			if n := deleteStartsOf(f); n != 1 {
+				t.Errorf("starts = %d, want exactly 1", n)
+			}
+		})
+	}
+}
+
+func TestSynologyDeletePartialStillFillsRemainingWhenItCan(t *testing.T) {
+	fastPolling(t, 3)
+	f := deleteFake(t, delRunning)
+	afterDelete(f, "/NAS/b")
+	got, err := del(f, allowNAS, true, "/NAS/a", "/NAS/b")
+	if err != nil {
+		t.Fatalf("SynologyDelete: %v", err)
+	}
+	mustContain(t, jsonOf(t, got), `"partial":true`, `"deleted":["/NAS/a"]`, `"remaining":["/NAS/b"]`, "synology_list_files")
+}
+
+func TestSynologyDeletePartialWithoutConfirmationHasEmptyListsNotNull(t *testing.T) {
+	fastPolling(t, 3)
+	f := deleteFake(t, delRunning)
+	pre := f.handlers["SYNO.FileStation.List/getinfo"]
+	f.handlers["SYNO.FileStation.List/getinfo"] = func(n int, form url.Values) string {
+		if f.calls["SYNO.FileStation.Delete/start"] > 0 {
+			return `{"success":false,"error":{"code":1001}}`
+		}
+		return pre(n, form)
+	}
+	got, err := del(f, allowNAS, true, "/NAS/a")
+	if err != nil {
+		t.Fatalf("SynologyDelete: %v", err)
+	}
+	mustContain(t, jsonOf(t, got), `"partial":true`, `"deleted":[]`, `"remaining":[]`)
 }

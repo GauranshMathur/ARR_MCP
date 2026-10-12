@@ -75,5 +75,5 @@ type SynologyCopyMoveArgs struct {
 type SynologyDeleteArgs struct {
 	InstanceArg
 	Paths     []string `json:"paths" jsonschema:"files and folders to delete, absolute, 1 to 10, no duplicates; each must be strictly inside the instance's allowedPaths (not an allowed path itself, not a share root, not in a #recycle folder). No .. segments"`
-	Recursive bool     `json:"recursive,omitempty" jsonschema:"also delete everything inside a folder; defaults to false, in which case DSM errors on a folder that contains anything"`
+	Recursive bool     `json:"recursive,omitempty" jsonschema:"also delete everything inside a folder; defaults to false, in which case DSM skips a folder that contains anything and this tool reports an error (observed on DSM 7.4.1)"`
 }

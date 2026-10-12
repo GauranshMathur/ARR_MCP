@@ -53,6 +53,9 @@ func synologyCfg(url string, perms config.Permissions) *config.Config {
 type synologyRecorder struct {
 	mu    sync.Mutex
 	forms []url.Values
+	// deleted is set once a File Station delete start arrives: getinfo then
+	// answers every path as missing, as DSM does after a delete.
+	deleted bool
 }
 
 func (r *synologyRecorder) keys() []string {
@@ -74,6 +77,10 @@ func synologyUpstream(t *testing.T, routes map[string]string) (*httptest.Server,
 		form, _ := url.ParseQuery(string(raw))
 		rec.mu.Lock()
 		rec.forms = append(rec.forms, form)
+		if form.Get("api") == "SYNO.FileStation.Delete" && form.Get("method") == "start" {
+			rec.deleted = true
+		}
+		deleted := rec.deleted
 		rec.mu.Unlock()
 		if r.URL.Path != "/webapi/entry.cgi" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
@@ -93,7 +100,7 @@ func synologyUpstream(t *testing.T, routes map[string]string) (*httptest.Server,
 		}
 		body, ok := routes[form.Get("api")+" "+form.Get("method")]
 		if ok && body == synologyIdentity {
-			body = identityGetInfo(form.Get("path"))
+			body = identityGetInfo(form.Get("path"), deleted)
 		}
 		if ok && body == synologyShares {
 			body = `{"success":true,"data":{"total":3,"shares":[{"name":"docker","path":"/docker","additional":{"real_path":"/volume1/docker"}},{"name":"kube","path":"/kube","additional":{"real_path":"/volume1/kube"}},{"name":"NAS","path":"/NAS","additional":{"real_path":"/volume1/NAS"}}]}}`
@@ -282,12 +289,12 @@ const (
 	synologyShares   = "@shares"
 )
 
-func identityGetInfo(pathParam string) string {
+func identityGetInfo(pathParam string, deleted bool) string {
 	var paths []string
 	_ = json.Unmarshal([]byte(pathParam), &paths)
 	parts := make([]string, 0, len(paths))
 	for _, p := range paths {
-		if strings.HasPrefix(p[strings.LastIndex(p, "/")+1:], "new") {
+		if deleted || strings.HasPrefix(p[strings.LastIndex(p, "/")+1:], "new") {
 			parts = append(parts, `{"path":`+strconv.Quote(p)+`,"code":408}`)
 			continue
 		}
