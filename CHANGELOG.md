@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.12.0...v1.13.0) (2026-10-12)
+
+
+### Features
+
+* **synology:** add synology_delete_files ([fd9f1db](https://github.com/GauranshMathur/ARR_MCP/commit/fd9f1dbfdb4bb6a025925d08474eefb274381708)), closes [#64](https://github.com/GauranshMathur/ARR_MCP/issues/64)
+
+
+### Bug Fixes
+
+* **synology:** confirm a delete took effect before reporting it ([94a8b73](https://github.com/GauranshMathur/ARR_MCP/commit/94a8b7349a57040fcdc2bc167949d25083599cec))
+
 ## [1.12.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.11.0...v1.12.0) (2026-10-11)
 
 
