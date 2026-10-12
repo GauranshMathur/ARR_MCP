@@ -435,7 +435,7 @@ The Cline CLI uses `~/.cline/mcp.json` with the same schema.
 
 `autoApprove` lists tools Cline may call without asking. It is Cline's own approval layer
 and is independent of ARR-MCP's permission mode — a tool listed there still has to pass
-the server's [permission gate](../README.md#permissions). Leaving it as `[]` and letting
+the server's [permission gate](permissions.md). Leaving it as `[]` and letting
 ARR-MCP do the gating keeps one policy instead of two, and read tools are never gated by
 either.
 
@@ -677,7 +677,7 @@ use stdio there instead.
 
 There is no authentication in front of `/mcp`. Anyone who can reach the port can drive
 every configured \*arr instance, subject only to the
-[permission mode](../README.md#permissions). Keep it on a trusted network, or put
+[permission mode](permissions.md). Keep it on a trusted network, or put
 authentication in front of it with a reverse proxy.
 
 ### Verifying a connection by hand

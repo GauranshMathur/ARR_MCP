@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120" role="img" aria-label="ARR-MCP">
+  <g fill="none" stroke="#3b82f6" stroke-width="4" stroke-linecap="round">
+    <path d="M82 32 L112 60"/>
+    <path d="M82 60 L112 60"/>
+    <path d="M82 88 L112 60"/>
+  </g>
+  <rect x="10" y="20" width="72" height="24" rx="7" fill="#38bdf8"/>
+  <rect x="10" y="48" width="72" height="24" rx="7" fill="#3b82f6"/>
+  <rect x="10" y="76" width="72" height="24" rx="7" fill="#6366f1"/>
+  <g fill="#ffffff">
+    <circle cx="24" cy="32" r="4"/>
+    <circle cx="24" cy="60" r="4"/>
+    <circle cx="24" cy="88" r="4"/>
+  </g>
+  <circle cx="114" cy="60" r="9" fill="#3b82f6"/>
+  <text x="138" y="77" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="48" font-weight="700" fill="#3b82f6">ARR-MCP</text>
+</svg>
