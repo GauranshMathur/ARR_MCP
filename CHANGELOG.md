@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.13.0...v1.13.1) (2026-10-12)
+
+
+### Documentation
+
+* **arr-mcp:** split the README into docs/ and make it a landing page ([25256b3](https://github.com/GauranshMathur/ARR_MCP/commit/25256b3b6b84197974950dd1bbf5ecf8aaee1775))
+
 ## [1.13.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.12.0...v1.13.0) (2026-10-12)
 
 
