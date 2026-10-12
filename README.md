@@ -5,7 +5,7 @@ An [MCP](https://modelcontextprotocol.io) server for the \*arr media stack. Conn
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
-- **322 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin, Jellystat and Synology DSM — what you would otherwise do by clicking through each web UI
+- **323 tools** across Sonarr, Radarr, Prowlarr, Bazarr, qBittorrent, NZBGet, Maintainerr, Seerr, Jellyfin, Jellystat and Synology DSM — what you would otherwise do by clicking through each web UI
 - **Single static binary**, distroless container, multi-arch image
 
 **Jump to:** [Install with your AI](#install-with-your-ai) · [Manual quickstart](#60-second-quickstart) · [Find your API key](#find-your-api-key) · [Configuration](#configuration) · [Client setup](docs/clients.md) · [Permissions](#permissions) · [Tools](#tools) · [Troubleshooting](#troubleshooting)
@@ -130,7 +130,7 @@ Synology DSM (default port 5000 for HTTP, 5001 for HTTPS) takes the username and
 a DSM account. **That account has to be a NAS administrator** (DSM serves storage health only
 to administrators), so its password is full control of the NAS: treat it that way. It must
 not use 2-factor authentication, because there is nobody to type a code. See
-[Synology](#synology-13) before pointing ARR-MCP at a NAS.
+[Synology](#synology-14) before pointing ARR-MCP at a NAS.
 
 Every one of these is a *full-access* credential for that application. ARR-MCP never
 needs more than one credential per instance, and the [permission model](#permissions) is
@@ -607,13 +607,13 @@ client, device and play method. Pages hold 25 rows by default and at most 100.
 | `jellystat_library_items` — a library's items with play count; sort by Views ascending for what nobody watched | read |
 | `jellystat_views_over_time` — plays and minutes per library per day | read |
 
-### Synology (13)
+### Synology (14)
 
 A Synology NAS running DSM 7: storage health and capacity, drive SMART status, resource use,
-and what is on disk through File Station. Ten tools only read; three change files (create a
-folder, rename, copy or move) and exist only behind `allowedPaths`, below. Each tool runs
+and what is on disk through File Station. Ten tools only read; four change files (create a
+folder, rename, copy or move, delete) and exist only behind `allowedPaths`, below. Each tool runs
 fixed DSM API calls; no tool takes an API or method name, so what the model can ask the NAS
-is exactly this table. Nothing deletes. Share, file and folder names are set by NAS users and are
+is exactly this table. Only `synology_delete_files` deletes. Share, file and folder names are set by NAS users and are
 passed through verbatim, flagged as data, not instructions. Paths must be absolute, start
 with a share (`/NAS/Movies`) and contain no `..` segment; anything else is rejected before a
 request is sent. File and search pages hold 25 entries by default and at most 100. The search
@@ -651,12 +651,13 @@ stop the task, and mark the result `partial` if the wait ran out.
 | `synology_create_folder` — one new folder inside an existing folder | write |
 | `synology_rename` — one file or folder to a new name, in the same folder | write |
 | `synology_copy_move` — copy or move into a folder; a move removes the sources and `overwrite` replaces files, so the tool is | destructive |
+| `synology_delete_files` — delete up to 10 files or folders as a File Station task; treat as permanent | destructive |
 
 #### `allowedPaths`: the only limit on file changes
 
 The DSM account is a NAS administrator. DSM's own share permissions do not limit it (an
 administrator can lift a "No access" setting), so **the `allowedPaths` setting is the only
-limit on which files these three tools can change**. It is a list of absolute DSM paths on
+limit on which files these four tools can change**. It is a list of absolute DSM paths on
 the instance:
 
 ```yaml
@@ -711,10 +712,44 @@ synology:
   copies and moves: copied files are owned by the DSM account, and copied or moved files had
   mode 777 afterwards (a moved file kept its owner but went from 644 to 777).
 
+- **Delete** (`synology_delete_files`) is the most restricted. Up to 10 paths per call, each listed once.
+  The fence is strict: an `allowedPaths` entry itself can never be deleted, only things below it. A
+  share root (`/NAS`) is always refused, allowlisted or not, and so is anything in a `#recycle` folder
+  (the match ignores letter case). Every path must exist and pass the link check above, with no
+  exception for a missing entry (a landing entry may be missing for a copy; a path to delete may not),
+  and all of that runs for the whole batch before the one start request: one refusal fails the call
+  and nothing is sent. It uses `SYNO.FileStation.Delete` v2 as a task (start, poll status, stop); the
+  blocking `delete` method is not used. The start is never sent twice: an ambiguous start (transport
+  error, no task id) is an error that says to check with `synology_list_files`.
+  - **`recursive`.** The File Station API guide (2023.03 revision, Delete section) gives `recursive` a
+    default of **true**, so the tool sends it explicitly on every start: `false` unless the caller passes
+    `recursive: true`. The guide says that with `false` an error occurs on a folder that contains
+    anything. **Observed on DSM 7.4.1, DSM does not error:** it accepts the start, reports the task
+    finished with 0 of 0 processed, and leaves the folder and its contents in place. So the tool does not
+    trust `finished`: after DSM reports it, one read-only `getinfo` over all the paths asked decides the
+    outcome (per-entry code 408, no such file, means deleted). If anything is still there the call
+    returns an **error** naming what was deleted and what remains, and saying a folder that contains
+    anything is not deleted unless `recursive` is true. If that check itself fails, the error says DSM
+    reported the task finished but the outcome could not be confirmed. The task is never started again.
+  - **Recycle bin (observed on DSM 7.4.1, one NAS).** On a share with the recycle bin enabled (`NAS`),
+    deleted files are moved to that share's `#recycle` folder, mirroring their path
+    (`/NAS/x/f.txt` to `/NAS/#recycle/x/f.txt`), whole trees with their structure; links and empty
+    folders are removed and not kept there. Other shares have no bin, so a delete there is permanent.
+    Treat a delete as permanent unless you know the share has the bin on. The tool never deletes from
+    `#recycle`, so it cannot empty the bin.
+  - **Links inside a recursive delete.** Observed: in a folder deleted with `recursive: true`, a relative
+    link to a folder, a link to a file and an absolute link were removed and their targets survived. The
+    tool itself still cannot see or check links inside a folder (they are hidden from listings).
+  - The result lists `deleted` (paths DSM then answered with code 408) and `remaining` (every other
+    asked path), always as arrays, plus `finished` and `partial`. DSM's own `processed_num` and `total`
+    are not reported: they were 0 and 0 for deletes that worked, so they cannot tell a no-op from a
+    success. `partial: true` means the wait (about two minutes) ran out and the task was stopped; some
+    entries may already be gone, and `deleted` and `remaining` are filled from a best-effort check.
+
 The write tools are hidden when the instance's permission mode is `readonly`, and they prompt
 in `confirm` mode like any other write tool.
 
-Not here yet: deleting is issue #64. Running a Hyper Backup task and taking a share snapshot
+Not here yet: deleting a share snapshot, running a Hyper Backup task and taking a share snapshot
 are deferred: the NAS this was built against answers error 103 for the backup API and has no
 snapshot to list, so no response shape could be verified. Hyper Backup task status and share
 snapshots were also left out of the read tools for the same reason.
@@ -922,11 +957,12 @@ error (105, 106, 107, 119) logs in once more and retries once. It needed one new
 `AuthDSM`, because the id travels in the body rather than a cookie or header.
 
 `synoCall` is unexported and refuses any api, method and version that is not in one of two
-fixed sets: `synoReadOps` (reads) and `synoWriteOps` (File Station `CreateFolder`, `Rename`
-and `CopyMove`). The code cannot reach `SYNO.Core.User`, `SYNO.Core.Group`,
-`SYNO.Core.ISCSI.*`, share permissions, `SYNO.FileStation.Delete` or any other call that
+fixed sets: `synoReadOps` (reads) and `synoWriteOps` (File Station `CreateFolder`, `Rename`,
+`CopyMove`, and the `start`, `status` and `stop` methods of `Delete`, not its blocking `delete`).
+The code cannot reach `SYNO.Core.User`, `SYNO.Core.Group`,
+`SYNO.Core.ISCSI.*`, share permissions or any other call that
 changes state. The write tools also pass every path through the `allowedPaths` check in
-`pkg/arr/synology_write.go` before logging in. Deleting is a separate issue (#64).
+`pkg/arr/synology_write.go` before logging in.
 
 ### Not planned: Plex
 

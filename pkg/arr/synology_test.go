@@ -332,7 +332,7 @@ func TestSynologyCallRefusesAnythingOutsideTheReadSet(t *testing.T) {
 		{"SYNO.Core.ISCSI.LUN", "list", 1},
 		{"SYNO.Core.Share", "delete", 1},
 		{"SYNO.FileStation.List", "list", 9},
-		{"SYNO.FileStation.Delete", "start", 2},
+		{"SYNO.FileStation.Delete", "delete", 2},
 		{"SYNO.DSM.Info", "reboot", 2},
 	} {
 		if _, err := synoCall[map[string]any](context.Background(), f.client(), op, nil); err == nil {

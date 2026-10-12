@@ -16,6 +16,9 @@ func TestSynologyWriteOpsAreExactlyTheFileStationWrites(t *testing.T) {
 		{"SYNO.FileStation.CopyMove", "start", 3}:      true,
 		{"SYNO.FileStation.CopyMove", "status", 3}:     true,
 		{"SYNO.FileStation.CopyMove", "stop", 3}:       true,
+		{"SYNO.FileStation.Delete", "start", 2}:        true,
+		{"SYNO.FileStation.Delete", "status", 2}:       true,
+		{"SYNO.FileStation.Delete", "stop", 2}:         true,
 	}
 	if len(synoWriteOps) != len(want) {
 		t.Errorf("synoWriteOps has %d entries, want %d: %v", len(synoWriteOps), len(want), synoWriteOps)
@@ -26,7 +29,7 @@ func TestSynologyWriteOpsAreExactlyTheFileStationWrites(t *testing.T) {
 		}
 	}
 	for op := range synoWriteOps {
-		for _, banned := range []string{"Delete", "ISCSI", "Core.User", "Core.Group", "Core.Share", "Storage.CGI", "Backup"} {
+		for _, banned := range []string{"ISCSI", "Core.User", "Core.Group", "Core.Share", "Storage.CGI", "Backup"} {
 			if strings.Contains(op.api, banned) {
 				t.Errorf("write op %+v touches %s", op, banned)
 			}
@@ -40,8 +43,10 @@ func TestSynologyWriteOpsAreExactlyTheFileStationWrites(t *testing.T) {
 func TestSynologyCallStillRefusesUnlistedOpsNextToTheWriteOps(t *testing.T) {
 	f := newWriteDSM(t)
 	for _, op := range []synoOp{
-		{"SYNO.FileStation.Delete", "start", 2},
-		{"SYNO.FileStation.Delete", "delete", 2},
+		{"SYNO.FileStation.Delete", "delete", 2}, // the blocking method
+		{"SYNO.FileStation.Delete", "start", 1},  // wrong version
+		{"SYNO.FileStation.Delete", "status", 1},
+		{"SYNO.FileStation.Delete", "clean", 2},
 		{"SYNO.FileStation.CopyMove", "start", 2}, // wrong version
 		{"SYNO.FileStation.CopyMove", "delete", 3},
 		{"SYNO.FileStation.CreateFolder", "create", 1},

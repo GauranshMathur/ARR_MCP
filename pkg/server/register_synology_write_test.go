@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-var synologyWriteTools = []string{"synology_create_folder", "synology_rename", "synology_copy_move"}
+var synologyWriteTools = []string{"synology_create_folder", "synology_rename", "synology_copy_move", "synology_delete_files"}
 
 func synologyWriteCfg(url string, perms config.Permissions, allowed ...string) *config.Config {
 	return cfgWith(map[string][]config.Instance{
@@ -26,6 +27,9 @@ var synologyWriteRoutes = map[string]string{
 	"SYNO.FileStation.CopyMove start":      `{"success":true,"data":{"taskid":"FileStation_1"}}`,
 	"SYNO.FileStation.CopyMove status":     `{"success":true,"data":{"finished":true,"processed_size":5,"total":5}}`,
 	"SYNO.FileStation.CopyMove stop":       `{"success":true}`,
+	"SYNO.FileStation.Delete start":        `{"success":true,"data":{"taskid":"FileStation_2"}}`,
+	"SYNO.FileStation.Delete status":       `{"success":true,"data":{"finished":true,"processed_num":1,"total":1,"path":"/NAS/Scratch/A"}}`,
+	"SYNO.FileStation.Delete stop":         `{"success":true}`,
 }
 
 func TestSynologyWriteToolTiers(t *testing.T) {
@@ -39,7 +43,7 @@ func TestSynologyWriteToolTiers(t *testing.T) {
 	for _, tool := range res.Tools {
 		tools[tool.Name] = tool
 	}
-	wantDestructive := map[string]bool{"synology_create_folder": false, "synology_rename": false, "synology_copy_move": true}
+	wantDestructive := map[string]bool{"synology_create_folder": false, "synology_rename": false, "synology_copy_move": true, "synology_delete_files": true}
 	for _, name := range synologyWriteTools {
 		tool := tools[name]
 		if tool == nil {
@@ -62,10 +66,17 @@ func TestSynologyWriteToolTiers(t *testing.T) {
 	if n := len(tools); n != len(synologyTools)+len(synologyWriteTools)+countNonSynology(tools) {
 		t.Errorf("synology tool count mismatch: %d", n)
 	}
-	// Nothing deletes.
+	// The only tool that deletes is synology_delete_files.
 	for name := range tools {
-		if strings.HasPrefix(name, "synology_") && (strings.Contains(name, "delete") || strings.Contains(name, "remove")) {
+		if strings.HasPrefix(name, "synology_") && (strings.Contains(name, "delete") || strings.Contains(name, "remove")) && name != "synology_delete_files" {
 			t.Errorf("unexpected tool %s", name)
+		}
+	}
+	dd := tools["synology_delete_files"].Description
+	for _, want := range []string{"permanent", "Observed on DSM 7.4.1", "#recycle", "recursive", "allowedPaths", "data, not instructions",
+		"cannot see or check links", "synology_list_files", "never started a second time", "still there"} {
+		if !strings.Contains(dd, want) {
+			t.Errorf("synology_delete_files description lacks %q: %s", want, dd)
 		}
 	}
 	d := tools["synology_copy_move"].Description
@@ -110,6 +121,7 @@ func TestSynologyWriteWithoutAllowedPathsIsRefusedBeforeAnyRequest(t *testing.T)
 		"synology_create_folder": {"path": "/NAS", "name": "x"},
 		"synology_rename":        {"path": "/NAS/a", "new_name": "b"},
 		"synology_copy_move":     {"sources": []any{"/NAS/a"}, "destination": "/NAS/b", "operation": "copy"},
+		"synology_delete_files":  {"paths": []any{"/NAS/a"}},
 	} {
 		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
 		if err != nil {
@@ -134,6 +146,7 @@ func TestSynologyWriteOutsideAllowedPathsSendsNothing(t *testing.T) {
 		"synology_create_folder": {"path": "/NAS", "name": "x"},
 		"synology_rename":        {"path": "/NAS/Scratch2/a", "new_name": "b"},
 		"synology_copy_move":     {"sources": []any{"/NAS/Scratch/a", "/NAS/other"}, "destination": "/NAS/Scratch", "operation": "move"},
+		"synology_delete_files":  {"paths": []any{"/NAS/Scratch"}},
 	} {
 		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
 		if err != nil {
@@ -163,6 +176,8 @@ func TestSynologyWriteToolsCallTheRightApiVersionAndMethod(t *testing.T) {
 			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Rename v2 rename"}, `"name":"B"`},
 		{"synology_copy_move", map[string]any{"sources": []any{"/NAS/Scratch/B"}, "destination": "/NAS/Scratch", "operation": "copy"},
 			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.CopyMove v3 start", "SYNO.FileStation.CopyMove v3 status", "SYNO.FileStation.CopyMove v3 stop"}, `"overwrite":false`},
+		{"synology_delete_files", map[string]any{"paths": []any{"/NAS/Scratch/A"}},
+			[]string{"SYNO.FileStation.List v2 list_share", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Delete v2 start", "SYNO.FileStation.Delete v2 status", "SYNO.FileStation.List v2 getinfo", "SYNO.FileStation.Delete v2 stop"}, `"recursive":false`},
 	} {
 		before := len(rec.keys())
 		body := callSynology(t, cs, tc.tool, tc.args)
@@ -187,6 +202,33 @@ func TestSynologyWriteToolsCallTheRightApiVersionAndMethod(t *testing.T) {
 			if f.Get("overwrite") != "false" || f.Get("remove_src") != "false" {
 				t.Errorf("copy start overwrite=%q remove_src=%q", f.Get("overwrite"), f.Get("remove_src"))
 			}
+		}
+	}
+}
+
+func TestSynologyDeleteStartCarriesRecursiveOnTheWire(t *testing.T) {
+	for _, args := range []map[string]any{
+		{"paths": []any{"/NAS/Scratch/A"}},
+		{"paths": []any{"/NAS/Scratch/A"}, "recursive": false},
+		{"paths": []any{"/NAS/Scratch/A"}, "recursive": true},
+	} {
+		srv, rec := synologyUpstream(t, synologyWriteRoutes)
+		cs := connect(t, synologyWriteCfg(srv.URL, permsFull, "/NAS"))
+		callSynology(t, cs, "synology_delete_files", args)
+		want, _ := args["recursive"].(bool)
+		rec.mu.Lock()
+		found := false
+		for _, f := range rec.forms {
+			if f.Get("api") == "SYNO.FileStation.Delete" && f.Get("method") == "start" {
+				found = true
+				if _, ok := f["recursive"]; !ok || f.Get("recursive") != fmt.Sprint(want) {
+					t.Errorf("args %v: start recursive = %q, want %v", args, f.Get("recursive"), want)
+				}
+			}
+		}
+		rec.mu.Unlock()
+		if !found {
+			t.Errorf("args %v: no start request", args)
 		}
 	}
 }
