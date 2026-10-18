@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.14.0...v1.15.0) (2026-10-18)
+
+
+### Features
+
+* **jellyfin:** add jellyfin_list_plugins ([800a6d4](https://github.com/GauranshMathur/ARR_MCP/commit/800a6d40b789444f38a521741b890f5ce1634e8a))
+
 ## [1.14.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.13.1...v1.14.0) (2026-10-18)
 
 
