@@ -162,4 +162,105 @@ func registerJellyfin(s *Server) {
 		err := arr.JellyfinRunTask(ctx, c, in.TaskID)
 		return JellyfinQueued{Action: "run_task", ID: in.TaskID, Queued: err == nil}, err
 	})
+
+	registerIntroSkipper(s, svc, spec)
+}
+
+// registerIntroSkipper adds the tools for the Intro Skipper plugin's own API,
+// served by the Jellyfin server and answering 404 where the plugin is absent.
+// Its erase-everything and database-rebuild endpoints are left out.
+func registerIntroSkipper(s *Server, svc string, spec arr.ServiceSpec) {
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_list_introskipper_segments",
+		description: "List the segments the Intro Skipper plugin stores for an episode or movie, in seconds, with " +
+			"each one's id and what produced it (User for one made by hand). These are the plugin's own records; " +
+			"jellyfin_list_media_segments shows Jellyfin's copy, which playback reads and which can lag behind.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinIntroSkipperSegmentsArgs) (JellyfinIntroSkipperSegmentList, error) {
+		segs, err := arr.IntroSkipperListSegments(ctx, c, in.ItemID, in.IncludeSuppressed)
+		return JellyfinIntroSkipperSegmentList{ItemID: in.ItemID, Segments: segs, Count: len(segs)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_get_introskipper_analyzers",
+		description: "Show which analyzer Intro Skipper uses for each segment type in one season: Default, " +
+			"Chapter, Chromaprint, BlackFrame or None. A season the plugin does not know answers 404.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSeasonArgs) (JellyfinIntroSkipperAnalyzers, error) {
+		actions, err := arr.IntroSkipperAnalyzers(ctx, c, in.SeasonID)
+		return JellyfinIntroSkipperAnalyzers{SeasonID: in.SeasonID, Actions: actions}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_get_introskipper_scan_status",
+		description: "Report whether Intro Skipper is scanning. Version 12.0.5.0 and later report the season, " +
+			"including whether its scan is queued or failed; 12.0.4.0 only says whether any scan is running. " +
+			"The result's scope says which you got.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSeasonArgs) (arr.IntroSkipperScanState, error) {
+		return arr.IntroSkipperScanStatus(ctx, c, in.SeasonID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_create_introskipper_segment",
+		description: "Add a hand-made Intro Skipper segment to an episode or movie, in seconds. Types use the " +
+			"plugin's names: Introduction, Credits, Preview, Recap, Commercial. A segment with exactly the same " +
+			"range becomes the hand-made one. The result says whether Jellyfin's copy, which playback reads, " +
+			"already shows it.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinCreateSegmentArgs) (arr.IntroSkipperChange, error) {
+		return arr.IntroSkipperCreateSegment(ctx, c, in.ItemID, in.Type, in.StartSeconds, in.EndSeconds)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_update_introskipper_segment",
+		description: "Move an Intro Skipper segment's start and end, in seconds. It becomes a hand-made (User) " +
+			"segment, and moving it exactly onto another of the same type merges the two.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinUpdateSegmentArgs) (arr.IntroSkipperChange, error) {
+		return arr.IntroSkipperUpdateSegment(ctx, c, in.ItemID, in.SegmentID, in.StartSeconds, in.EndSeconds)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_restore_introskipper_segment",
+		description: "Bring back a deleted detected Intro Skipper segment, one listed as suppressed by " +
+			"jellyfin_list_introskipper_segments with includeSuppressed, with its original source.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSegmentRefArgs) (arr.IntroSkipperChange, error) {
+		return arr.IntroSkipperRestoreSegment(ctx, c, in.ItemID, in.SegmentID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_set_introskipper_analyzers",
+		description: "Choose which analyzer Intro Skipper uses for segment types in one season, such as " +
+			"Chromaprint for intros or Chapter for credits; types not named keep theirs. The season's next " +
+			"analysis uses them. Returns the season's analyzers as read back after the change.",
+		access: AccessWrite,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSetAnalyzersArgs) (JellyfinIntroSkipperAnalyzers, error) {
+		actions, err := arr.IntroSkipperSetAnalyzers(ctx, c, in.SeasonID, in.Actions)
+		return JellyfinIntroSkipperAnalyzers{SeasonID: in.SeasonID, Actions: actions}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_delete_introskipper_segment",
+		description: "Delete an Intro Skipper segment. A detected segment is kept as a tombstone, so " +
+			"re-analysis does not add it back and jellyfin_restore_introskipper_segment can restore it; a " +
+			"hand-made (User) segment is deleted permanently.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSegmentRefArgs) (arr.IntroSkipperChange, error) {
+		return arr.IntroSkipperDeleteSegment(ctx, c, in.ItemID, in.SegmentID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_scan_introskipper_season",
+		description: "Re-analyze one season with Intro Skipper. It first erases every segment of every " +
+			"episode in the season, including ones made by hand, with the season's analysis results and " +
+			"fingerprint cache: list hand-made segments first and re-create them after the scan. Runs in the " +
+			"background; follow it with jellyfin_get_introskipper_scan_status. Version 12.0.4.0 refuses a " +
+			"second scan while one runs.",
+		access: AccessDestructive,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinScanSeasonArgs) (JellyfinQueued, error) {
+		err := arr.IntroSkipperScanSeason(ctx, c, in.SeriesID, in.SeasonID)
+		return JellyfinQueued{Action: "scan_introskipper_season", ID: in.SeasonID, Queued: err == nil}, err
+	})
 }

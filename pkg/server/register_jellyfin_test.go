@@ -25,16 +25,29 @@ var jellyfinReadTools = []string{
 	"jellyfin_list_media_segments",
 	"jellyfin_list_episode_markers",
 	"jellyfin_list_plugins",
+	"jellyfin_list_introskipper_segments",
+	"jellyfin_get_introskipper_analyzers",
+	"jellyfin_get_introskipper_scan_status",
 }
 
 var jellyfinWriteTools = []string{
 	"jellyfin_scan_library",
 	"jellyfin_refresh_item",
+	"jellyfin_create_introskipper_segment",
+	"jellyfin_update_introskipper_segment",
+	"jellyfin_restore_introskipper_segment",
+	"jellyfin_set_introskipper_analyzers",
 }
 
 // jellyfinDestructiveTools can delete data: scheduled tasks include cache, log,
-// transcode and activity-log cleanups, and plugins add their own.
-var jellyfinDestructiveTools = []string{"jellyfin_run_task"}
+// transcode and activity-log cleanups, and plugins add their own. Deleting a
+// user segment is permanent, and a season scan erases every segment in the
+// season, user segments included.
+var jellyfinDestructiveTools = []string{
+	"jellyfin_run_task",
+	"jellyfin_delete_introskipper_segment",
+	"jellyfin_scan_introskipper_season",
+}
 
 func jellyfinCfg(url string, perms config.Permissions) *config.Config {
 	return cfgWith(map[string][]config.Instance{
@@ -287,6 +300,98 @@ func TestJellyfinListPluginsToolDropsDescriptions(t *testing.T) {
 	}
 	if !strings.Contains(body, `"count":1`) || !strings.Contains(body, `"status":"Restart"`) || !strings.Contains(body, `"version":"12.0.5.0"`) {
 		t.Errorf("result = %s", body)
+	}
+}
+
+func TestJellyfinIntroSkipperToolsReachTheirEndpoints(t *testing.T) {
+	const (
+		ep     = "00cb39385fc82b4b4e9db35434770392"
+		seg    = "01a14e5f37457e479775608f97681260"
+		series = "9993907cc9859aa5e0e31db2d60ce47a"
+		season = "5d6c3e1a9b8f4c2d8e7f6a5b4c3d2e1f"
+	)
+	segment := `{"Id":"` + seg + `","Type":"Credits","Start":1232.2,"End":1270.1,"Source":"User","Suppressed":false}`
+	srv, rec := jellyfinUpstream(t, map[string]string{
+		"GET /Episode/" + ep + "/Segments":                      `[` + segment + `]`,
+		"POST /Episode/" + ep + "/Segments":                     segment,
+		"PUT /Episode/" + ep + "/Segments/" + seg:               segment,
+		"POST /Episode/" + ep + "/Segments/" + seg + "/Restore": segment,
+		"DELETE /Episode/" + ep + "/Segments/" + seg:            "",
+		"GET /Intros/AnalyzerActions/" + season:                 `{"Introduction":"Chromaprint","Credits":"Chapter"}`,
+		"POST /Intros/AnalyzerActions/UpdateSeason":             "",
+		"POST /Intros/ScanSeason/" + series + "/" + season:      "",
+		"GET /Intros/ScanStatus/" + season:                      `{"isRunning":true,"isQueued":false,"failed":false}`,
+	})
+	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
+
+	body := callJellyfin(t, cs, "jellyfin_list_introskipper_segments", map[string]any{"itemId": ep, "includeSuppressed": true})
+	if !strings.Contains(body, `"count":1`) || !strings.Contains(body, `"source":"User"`) {
+		t.Errorf("list = %s", body)
+	}
+	body = callJellyfin(t, cs, "jellyfin_create_introskipper_segment", map[string]any{
+		"itemId": ep, "type": "Credits", "startSeconds": 1232.2, "endSeconds": 1270.1,
+	})
+	if !strings.Contains(body, `"projection":"Applied"`) {
+		t.Errorf("create = %s", body)
+	}
+	callJellyfin(t, cs, "jellyfin_update_introskipper_segment", map[string]any{
+		"itemId": ep, "segmentId": seg, "startSeconds": 1230, "endSeconds": 1270.1,
+	})
+	callJellyfin(t, cs, "jellyfin_restore_introskipper_segment", map[string]any{"itemId": ep, "segmentId": seg})
+	callJellyfin(t, cs, "jellyfin_delete_introskipper_segment", map[string]any{"itemId": ep, "segmentId": seg})
+	body = callJellyfin(t, cs, "jellyfin_set_introskipper_analyzers", map[string]any{
+		"seasonId": season, "actions": map[string]any{"Credits": "Chapter"},
+	})
+	if !strings.Contains(body, `"Credits":"Chapter"`) || !strings.Contains(body, `"seasonId":"`+season+`"`) {
+		t.Errorf("set analyzers = %s", body)
+	}
+	callJellyfin(t, cs, "jellyfin_get_introskipper_analyzers", map[string]any{"seasonId": season})
+	body = callJellyfin(t, cs, "jellyfin_scan_introskipper_season", map[string]any{"seriesId": series, "seasonId": season})
+	if !strings.Contains(body, `"queued":true`) {
+		t.Errorf("scan = %s", body)
+	}
+	body = callJellyfin(t, cs, "jellyfin_get_introskipper_scan_status", map[string]any{"seasonId": season})
+	if !strings.Contains(body, `"scope":"season"`) || !strings.Contains(body, `"isRunning":true`) {
+		t.Errorf("status = %s", body)
+	}
+
+	want := []string{
+		"GET /Episode/" + ep + "/Segments?includeSuppressed=true",
+		"POST /Episode/" + ep + "/Segments",
+		"PUT /Episode/" + ep + "/Segments/" + seg,
+		"POST /Episode/" + ep + "/Segments/" + seg + "/Restore",
+		"DELETE /Episode/" + ep + "/Segments/" + seg,
+		"GET /Intros/AnalyzerActions/" + season,
+		"POST /Intros/AnalyzerActions/UpdateSeason",
+		"GET /Intros/AnalyzerActions/" + season,
+		"GET /Intros/AnalyzerActions/" + season,
+		"POST /Intros/ScanSeason/" + series + "/" + season,
+		"GET /Intros/ScanStatus/" + season,
+	}
+	if strings.Join(rec.lines, "\n") != strings.Join(want, "\n") {
+		t.Errorf("requests:\n%s\nwant:\n%s", strings.Join(rec.lines, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// What makes the two destructive Intro Skipper tools destructive must be in
+// their descriptions, where the model reads it before calling.
+func TestJellyfinIntroSkipperDestructiveToolsSayWhatTheyErase(t *testing.T) {
+	srv, _ := fakeArr(t, `[]`)
+	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	want := map[string][]string{
+		"jellyfin_scan_introskipper_season":    {"erases every segment", "made by hand"},
+		"jellyfin_delete_introskipper_segment": {"permanently", "restore"},
+	}
+	for _, tool := range res.Tools {
+		for _, phrase := range want[tool.Name] {
+			if !strings.Contains(tool.Description, phrase) {
+				t.Errorf("%s description lacks %q: %s", tool.Name, phrase, tool.Description)
+			}
+		}
 	}
 }
 

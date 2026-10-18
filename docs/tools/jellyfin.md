@@ -27,3 +27,25 @@ are capped at 100 entries per call. See [Scope](../scope.md#jellyfin) for what i
 | `jellyfin_scan_library` — every library, in the background | write |
 | `jellyfin_refresh_item` — one item or library; never replaces existing metadata | write |
 | `jellyfin_run_task` — start a scheduled task now; some tasks (clean cache, logs, activity log) delete data | destructive |
+
+## Intro Skipper
+
+These tools call the [Intro Skipper](https://github.com/intro-skipper/intro-skipper) plugin's own
+API, which the Jellyfin server serves behind the same key; without the plugin they answer 404.
+The plugin publishes no API document, so they follow its source at 12.0.4.0 and 12.0.5.0. It names
+segment types Introduction, Credits, Preview, Recap and Commercial, where Jellyfin's media segments
+say Intro and Outro. Its records are the source of Jellyfin's media segments: a write reports
+`projection` Applied when Jellyfin's copy, which playback reads, already shows it, and Pending
+when that copy catches up later.
+
+| Tool | Access |
+|---|---|
+| `jellyfin_list_introskipper_segments` — the plugin's segments for an item, with ids and sources; `includeSuppressed` adds deleted detected ones | read |
+| `jellyfin_get_introskipper_analyzers` — a season's analyzer per segment type | read |
+| `jellyfin_get_introskipper_scan_status` — per season on 12.0.5.0, server-wide on 12.0.4.0 | read |
+| `jellyfin_create_introskipper_segment` — add a hand-made segment, in seconds | write |
+| `jellyfin_update_introskipper_segment` — move a segment; it becomes hand-made | write |
+| `jellyfin_restore_introskipper_segment` — bring back a deleted detected segment | write |
+| `jellyfin_set_introskipper_analyzers` — change a season's analyzers for the named types; refuses a season the plugin does not know | write |
+| `jellyfin_delete_introskipper_segment` — a detected segment is kept as a restorable tombstone; a hand-made one is gone for good | destructive |
+| `jellyfin_scan_introskipper_season` — **erases every segment in the season, hand-made ones included**, then re-analyzes it | destructive |
