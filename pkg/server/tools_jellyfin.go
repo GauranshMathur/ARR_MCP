@@ -89,6 +89,12 @@ type JellyfinScanSeasonArgs struct {
 	SeasonID string `json:"seasonId" jsonschema:"a season of that series: jellyfin_search_items with includeItemTypes Season and the series as parentId"`
 }
 
+// JellyfinPluginConfigArgs identifies the plugin whose settings to read.
+type JellyfinPluginConfigArgs struct {
+	InstanceArg
+	PluginID string `json:"pluginId" jsonschema:"plugin id from jellyfin_list_plugins"`
+}
+
 // JellyfinActivityArgs pages jellyfin_activity_log.
 type JellyfinActivityArgs struct {
 	InstanceArg

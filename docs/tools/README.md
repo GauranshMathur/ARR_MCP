@@ -10,7 +10,7 @@
 | [NZBGet](nzbget.md) | 18 |
 | [Maintainerr](maintainerr.md) | 25 |
 | [Seerr](seerr.md) | 17 |
-| [Jellyfin](jellyfin.md) | 23 |
+| [Jellyfin](jellyfin.md) | 24 |
 | [Jellystat](jellystat.md) | 10 |
 | [Synology](synology.md) | 14 |
 
