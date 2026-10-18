@@ -374,9 +374,9 @@ func TestJellyfinIntroSkipperToolsReachTheirEndpoints(t *testing.T) {
 	}
 }
 
-// What makes the two destructive Intro Skipper tools destructive must be in
-// their descriptions, where the model reads it before calling.
-func TestJellyfinIntroSkipperDestructiveToolsSayWhatTheyErase(t *testing.T) {
+// What the Intro Skipper writes do beyond the obvious must be in their
+// descriptions, where the model reads it before calling.
+func TestJellyfinIntroSkipperToolsSayWhatTheyDo(t *testing.T) {
 	srv, _ := fakeArr(t, `[]`)
 	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
 	res, err := cs.ListTools(context.Background(), nil)
@@ -386,6 +386,9 @@ func TestJellyfinIntroSkipperDestructiveToolsSayWhatTheyErase(t *testing.T) {
 	want := map[string][]string{
 		"jellyfin_scan_introskipper_season":    {"erases every segment", "made by hand"},
 		"jellyfin_delete_introskipper_segment": {"permanently", "restore"},
+		// Changing a type's analyzer changes Intro Skipper's analysis hash, so it
+		// re-analyzes the season by itself and a read soon after can find nothing.
+		"jellyfin_set_introskipper_analyzers": {"re-analyzes the season", "isRunning false"},
 	}
 	for _, tool := range res.Tools {
 		for _, phrase := range want[tool.Name] {

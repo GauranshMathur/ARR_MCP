@@ -246,8 +246,10 @@ func registerIntroSkipper(s *Server, svc string, spec arr.ServiceSpec) {
 	register(s, svc, spec, toolMeta{
 		name: "jellyfin_set_introskipper_analyzers",
 		description: "Choose which analyzer Intro Skipper uses for segment types in one season, such as " +
-			"Chromaprint for intros or Chapter for credits; types not named keep theirs. The season's next " +
-			"analysis uses them. Returns the season's analyzers as read back after the change.",
+			"Chromaprint for intros or Chapter for credits; types not named keep theirs. After a change Intro " +
+			"Skipper re-analyzes the season by itself within minutes, and until " +
+			"jellyfin_get_introskipper_scan_status reports isRunning false the season can read as having no " +
+			"segments. Returns the season's analyzers as read back after the change.",
 		access: AccessWrite,
 	}, func(ctx context.Context, c *arr.Client, in JellyfinSetAnalyzersArgs) (JellyfinIntroSkipperAnalyzers, error) {
 		actions, err := arr.IntroSkipperSetAnalyzers(ctx, c, in.SeasonID, in.Actions)

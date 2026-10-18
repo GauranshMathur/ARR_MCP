@@ -62,6 +62,6 @@ when that copy catches up later.
 | `jellyfin_create_introskipper_segment` — add a hand-made segment, in seconds | write |
 | `jellyfin_update_introskipper_segment` — move a segment; it becomes hand-made | write |
 | `jellyfin_restore_introskipper_segment` — bring back a deleted detected segment | write |
-| `jellyfin_set_introskipper_analyzers` — change a season's analyzers for the named types; refuses a season the plugin does not know | write |
+| `jellyfin_set_introskipper_analyzers` — change a season's analyzers for the named types; refuses a season the plugin does not know. Intro Skipper then re-analyzes the season by itself, and its segments can read as missing until the scan status shows it idle | write |
 | `jellyfin_delete_introskipper_segment` — a detected segment is kept as a restorable tombstone; a hand-made one is gone for good | destructive |
 | `jellyfin_scan_introskipper_season` — **erases every segment in the season, hand-made ones included**, then re-analyzes it | destructive |
