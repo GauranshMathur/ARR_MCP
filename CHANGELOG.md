@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.15.0...v1.16.0) (2026-10-18)
+
+
+### Features
+
+* **jellyfin:** add Intro Skipper segment, analyzer and season-scan tools ([abe6f01](https://github.com/GauranshMathur/ARR_MCP/commit/abe6f0123bb2519dab40f6f0aacef3546b986fc0))
+
 ## [1.15.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.14.0...v1.15.0) (2026-10-18)
 
 
