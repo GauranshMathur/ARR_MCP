@@ -466,6 +466,40 @@ func TestJellyfinListTasksTrimsTriggersAndNamesLastResult(t *testing.T) {
 	}
 }
 
+// A plugin updated without a restart is listed once per installed build under
+// one id; every row is kept, because the statuses are what say which build is
+// which.
+func TestJellyfinListPluginsKeepsEveryBuild(t *testing.T) {
+	srv, got := fakeService(t, 200, `[
+	  {"Name":"Intro Skipper","Version":"12.0.4.0","ConfigurationFileName":"x.xml","Description":"Detects intros.",
+	   "Id":"c83d86bba1e04c35a113e2101cf4ee6b","CanUninstall":true,"HasImage":true,"Status":"Superseded"},
+	  {"Name":"Intro Skipper","Version":"12.0.5.0","Description":"Detects intros.",
+	   "Id":"c83d86bba1e04c35a113e2101cf4ee6b","CanUninstall":true,"HasImage":true,"Status":"Restart"},
+	  {"Name":"AudioDB","Version":"12.0.0.0","Id":"a629c0dafac54c7e931a7174223f14c8","CanUninstall":false,"Status":"Active"}]`)
+
+	plugins, err := JellyfinListPlugins(context.Background(), jellyfinClient(srv.URL))
+	if err != nil {
+		t.Fatalf("JellyfinListPlugins: %v", err)
+	}
+	if got.method != "GET" || got.path != "/Plugins" {
+		t.Errorf("request = %s %s", got.method, got.path)
+	}
+	wantJellyfinAuth(t, got)
+	want := []JellyfinPlugin{
+		{ID: "c83d86bba1e04c35a113e2101cf4ee6b", Name: "Intro Skipper", Version: "12.0.4.0", Status: "Superseded", CanUninstall: true},
+		{ID: "c83d86bba1e04c35a113e2101cf4ee6b", Name: "Intro Skipper", Version: "12.0.5.0", Status: "Restart", CanUninstall: true},
+		{ID: "a629c0dafac54c7e931a7174223f14c8", Name: "AudioDB", Version: "12.0.0.0", Status: "Active"},
+	}
+	if len(plugins) != len(want) {
+		t.Fatalf("plugins = %+v, want %+v", plugins, want)
+	}
+	for i := range want {
+		if plugins[i] != want[i] {
+			t.Errorf("plugin %d = %+v, want %+v", i, plugins[i], want[i])
+		}
+	}
+}
+
 func TestJellyfinActivityLogPagesAndTrims(t *testing.T) {
 	srv, got := fakeService(t, 200, `{"TotalRecordCount":32700,"StartIndex":10,"Items":[
 	  {"Id":32700,"Name":"Arkhaya is online from Safari","ShortOverview":"IP address: 1.2.3.4",
@@ -601,6 +635,7 @@ func TestJellyfinUpstreamErrorsCarryTheStatus(t *testing.T) {
 		"sessions":    func() error { _, err := JellyfinListSessions(ctx, c); return err },
 		"users":       func() error { _, err := JellyfinListUsers(ctx, c); return err },
 		"tasks":       func() error { _, err := JellyfinListTasks(ctx, c); return err },
+		"plugins":     func() error { _, err := JellyfinListPlugins(ctx, c); return err },
 		"activity":    func() error { _, err := JellyfinActivityLog(ctx, c, 0, 0); return err },
 		"scan":        func() error { return JellyfinScanLibrary(ctx, c) },
 		"refresh":     func() error { return JellyfinRefreshItem(ctx, c, "748950f8695760523d0361ea48e0953b", "") },

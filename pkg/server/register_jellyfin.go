@@ -100,6 +100,18 @@ func registerJellyfin(s *Server) {
 	})
 
 	register(s, svc, spec, toolMeta{
+		name: "jellyfin_list_plugins",
+		description: "List installed Jellyfin plugins with their version and load status. A plugin updated " +
+			"without a restart appears once per installed build under the same id, the newer as Restart and " +
+			"the older as Superseded; jellyfin_system_info's hasPendingRestart says a restart is due, the " +
+			"Restart rows say which plugins it is for.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, _ EmptyArgs) (JellyfinPluginList, error) {
+		plugins, err := arr.JellyfinListPlugins(ctx, c)
+		return JellyfinPluginList{Plugins: plugins, Count: len(plugins)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
 		name:        "jellyfin_list_tasks",
 		description: "List Jellyfin's scheduled tasks with their state and how the last run ended.",
 		access:      AccessRead,
