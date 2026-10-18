@@ -169,6 +169,8 @@ const jellyfinItemBody = `{"Name":"17 Again","Id":"748950f8695760523d0361ea48e09
   "Container":"mkv","Width":1920,"Height":1080,
   "UserData":{"PlaybackPositionTicks":6000000000,"PlayCount":1,"IsFavorite":true,"Played":false,
               "LastPlayedDate":"2025-11-12T14:55:53.5723829Z","Key":"16996"},
+  "Chapters":[{"StartPositionTicks":2438000000,"Name":"Intro","ImageDateModified":"0001-01-01T00:00:00.0000000Z"},
+              {"StartPositionTicks":13709000000,"Name":"Credits","ImageTag":"t","ImageDateModified":"0001-01-01T00:00:00.0000000Z"}],
   "MediaSources":[{"Path":"x"}],"People":[{"Name":"p"}],"Studios":[{"Name":"s"}]}`
 
 func TestJellyfinGetItemWithUserID(t *testing.T) {
@@ -190,6 +192,21 @@ func TestJellyfinGetItemWithUserID(t *testing.T) {
 	if item.UserID != "0259b8b9ba6540c7b927ec98efa5c2da" || item.UserData == nil || item.UserData.PlaybackPositionSeconds != 600 ||
 		item.UserData.PlayCount != 1 || !item.UserData.IsFavorite || item.UserData.Played {
 		t.Errorf("userData = %+v (userId %q)", item.UserData, item.UserID)
+	}
+}
+
+// GET /Items/{id} returns chapters without being asked; it has no fields
+// parameter. Boundaries keep their fractions: the overlaps worth finding are
+// often under a second.
+func TestJellyfinGetItemProjectsChapters(t *testing.T) {
+	srv, _ := fakeService(t, 200, jellyfinItemBody)
+	item, err := JellyfinGetItem(context.Background(), jellyfinClient(srv.URL), "748950f8695760523d0361ea48e0953b", "0259b8b9ba6540c7b927ec98efa5c2da")
+	if err != nil {
+		t.Fatalf("JellyfinGetItem: %v", err)
+	}
+	want := []JellyfinChapter{{Name: "Intro", StartSeconds: 243.8}, {Name: "Credits", StartSeconds: 1370.9}}
+	if len(item.Chapters) != 2 || item.Chapters[0] != want[0] || item.Chapters[1] != want[1] {
+		t.Errorf("chapters = %+v, want %+v", item.Chapters, want)
 	}
 }
 
@@ -236,6 +253,122 @@ func TestJellyfinGetItemUnknownIDIsAStatusError(t *testing.T) {
 	var se *StatusError
 	if !errors.As(err, &se) || se.Status != 404 {
 		t.Errorf("err = %v, want a 404 StatusError", err)
+	}
+}
+
+func TestJellyfinMediaSegmentsConvertsTicksToSeconds(t *testing.T) {
+	srv, got := fakeService(t, 200, `{"TotalRecordCount":2,"StartIndex":0,"Items":[
+	  {"Id":"3313d876eb444c72ae26f99c9c776c81","ItemId":"00cb39385fc82b4b4e9db35434770392","Type":"Intro","StartTicks":1084000000,"EndTicks":12332320000},
+	  {"Id":"4413d876eb444c72ae26f99c9c776c81","ItemId":"00cb39385fc82b4b4e9db35434770392","Type":"Outro","StartTicks":12322320000,"EndTicks":12701120000}]}`)
+
+	segs, err := JellyfinMediaSegments(context.Background(), jellyfinClient(srv.URL), "00cb39385fc82b4b4e9db35434770392")
+	if err != nil {
+		t.Fatalf("JellyfinMediaSegments: %v", err)
+	}
+	// includeSegmentTypes is never sent: Jellyfin reads only its repeated-key
+	// form there, and a comma-separated list silently matches nothing.
+	if got.method != "GET" || got.path != "/MediaSegments/00cb39385fc82b4b4e9db35434770392" || got.query != "" {
+		t.Errorf("request = %s %s ?%s", got.method, got.path, got.query)
+	}
+	wantJellyfinAuth(t, got)
+	want := []JellyfinMediaSegment{
+		{Type: "Intro", StartSeconds: 108.4, EndSeconds: 1233.232},
+		{Type: "Outro", StartSeconds: 1232.232, EndSeconds: 1270.112},
+	}
+	if len(segs) != 2 || segs[0] != want[0] || segs[1] != want[1] {
+		t.Errorf("segments = %+v, want %+v", segs, want)
+	}
+}
+
+// A virtual episode or an item that is not a video answers 200 with no items;
+// that must read as an empty list, not null.
+func TestJellyfinMediaSegmentsNoneIsAnEmptyList(t *testing.T) {
+	srv, _ := fakeService(t, 200, `{"Items":[],"TotalRecordCount":0,"StartIndex":0}`)
+	segs, err := JellyfinMediaSegments(context.Background(), jellyfinClient(srv.URL), "f1d029d077f6f555b9baf73f5e0305f4")
+	if err != nil || segs == nil || len(segs) != 0 {
+		t.Errorf("segments = %#v, err = %v; want an empty, non-nil list", segs, err)
+	}
+}
+
+const markersEpisodes = `{"TotalRecordCount":249,"StartIndex":100,"Items":[
+  {"Id":"00cb39385fc82b4b4e9db35434770392","Name":"The Late Show","Type":"Episode","SeriesName":"Modern Family",
+   "ParentIndexNumber":5,"IndexNumber":5,"RunTimeTicks":13784320000,"ImageTags":{"Primary":"x"},
+   "Chapters":[{"StartPositionTicks":1084000000,"Name":"Intro","ImageDateModified":"0001-01-01T00:00:00.0000000Z"},
+               {"StartPositionTicks":12322320000,"Name":"Credits"}]},
+  {"Id":"f1d029d077f6f555b9baf73f5e0305f4","Name":"A Special","Type":"Episode","ParentIndexNumber":0,"IndexNumber":1,
+   "LocationType":"Virtual"}]}`
+
+func TestJellyfinListEpisodeMarkersJoinsChaptersAndSegments(t *testing.T) {
+	c, seen := jellyfinRoutes(t, map[string]string{
+		"GET /Items": markersEpisodes,
+		"GET /MediaSegments/00cb39385fc82b4b4e9db35434770392": `{"Items":[
+		  {"Type":"Intro","StartTicks":1084000000,"EndTicks":12332320000},
+		  {"Type":"Outro","StartTicks":12322320000,"EndTicks":13784320000}]}`,
+		"GET /MediaSegments/f1d029d077f6f555b9baf73f5e0305f4": `{"Items":[]}`,
+	})
+
+	page, err := JellyfinListEpisodeMarkers(context.Background(), c, "9993907cc9859aa5e0e31db2d60ce47a", 2, 100)
+	if err != nil {
+		t.Fatalf("JellyfinListEpisodeMarkers: %v", err)
+	}
+	if len(*seen) != 3 {
+		t.Fatalf("requests = %v, want the listing and one segments call per episode", *seen)
+	}
+	list := (*seen)[0]
+	for _, part := range []string{"GET /Items?", "parentId=9993907cc9859aa5e0e31db2d60ce47a", "recursive=true",
+		"includeItemTypes=Episode", "fields=Chapters", "sortBy=ParentIndexNumber%2CIndexNumber", "sortOrder=Ascending",
+		"limit=2", "startIndex=100"} {
+		if !strings.Contains(list, part) {
+			t.Errorf("listing %q missing %q", list, part)
+		}
+	}
+	if page.TotalCount != 249 || page.StartIndex != 100 || page.Count != 2 || len(page.Episodes) != 2 {
+		t.Fatalf("page = %+v", page)
+	}
+	e := page.Episodes[0]
+	if e.ID != "00cb39385fc82b4b4e9db35434770392" || e.Name != "The Late Show" || e.SeasonNumber == nil || *e.SeasonNumber != 5 ||
+		e.EpisodeNumber == nil || *e.EpisodeNumber != 5 || e.RuntimeSeconds != 1378.432 {
+		t.Errorf("episode = %+v", e)
+	}
+	if len(e.Chapters) != 2 || e.Chapters[1] != (JellyfinChapter{Name: "Credits", StartSeconds: 1232.232}) {
+		t.Errorf("chapters = %+v", e.Chapters)
+	}
+	if len(e.Segments) != 2 || e.Segments[0] != (JellyfinMediaSegment{Type: "Intro", StartSeconds: 108.4, EndSeconds: 1233.232}) {
+		t.Errorf("segments = %+v", e.Segments)
+	}
+	// "No markers" is the finding on a virtual episode, so it must be visible
+	// as empty lists rather than absent fields.
+	if v := page.Episodes[1]; v.Chapters == nil || v.Segments == nil || len(v.Chapters)+len(v.Segments) != 0 {
+		t.Errorf("virtual episode = %#v, want empty, non-nil chapters and segments", v)
+	}
+}
+
+// One episode's segments failing must fail the page and say which episode,
+// rather than return a page that silently reads as "no segments".
+func TestJellyfinListEpisodeMarkersNamesTheEpisodeThatFailed(t *testing.T) {
+	c, _ := jellyfinRoutes(t, map[string]string{
+		"GET /Items": markersEpisodes,
+		"GET /MediaSegments/00cb39385fc82b4b4e9db35434770392": `{"Items":[]}`,
+	})
+	_, err := JellyfinListEpisodeMarkers(context.Background(), c, "9993907cc9859aa5e0e31db2d60ce47a", 0, 0)
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != 404 || !strings.Contains(err.Error(), "f1d029d077f6f555b9baf73f5e0305f4") {
+		t.Errorf("err = %v, want a 404 StatusError naming episode f1d029d077f6f555b9baf73f5e0305f4", err)
+	}
+}
+
+func TestJellyfinListEpisodeMarkersDefaultsAndCapsTheLimit(t *testing.T) {
+	for _, tc := range []struct {
+		in   int
+		want string
+	}{{0, "limit=25"}, {100000, "limit=100"}} {
+		c, seen := jellyfinRoutes(t, map[string]string{"GET /Items": `{"Items":[]}`})
+		if _, err := JellyfinListEpisodeMarkers(context.Background(), c, "9993907cc9859aa5e0e31db2d60ce47a", tc.in, 0); err != nil {
+			t.Fatalf("limit %d: %v", tc.in, err)
+		}
+		if !strings.Contains((*seen)[0], tc.want+"&") && !strings.HasSuffix((*seen)[0], tc.want) {
+			t.Errorf("limit %d: listing %q, want %s", tc.in, (*seen)[0], tc.want)
+		}
 	}
 }
 
@@ -472,6 +605,14 @@ func TestJellyfinUpstreamErrorsCarryTheStatus(t *testing.T) {
 		"scan":        func() error { return JellyfinScanLibrary(ctx, c) },
 		"refresh":     func() error { return JellyfinRefreshItem(ctx, c, "748950f8695760523d0361ea48e0953b", "") },
 		"run task":    func() error { return JellyfinRunTask(ctx, c, "7053f526af0895e6d7e11bd42f0ec871") },
+		"segments": func() error {
+			_, err := JellyfinMediaSegments(ctx, c, "00cb39385fc82b4b4e9db35434770392")
+			return err
+		},
+		"markers": func() error {
+			_, err := JellyfinListEpisodeMarkers(ctx, c, "9993907cc9859aa5e0e31db2d60ce47a", 0, 0)
+			return err
+		},
 	}
 	for name, call := range checks {
 		var se *StatusError
@@ -497,6 +638,8 @@ func TestJellyfinRejectsEveryNonIDBeforeAnyRequest(t *testing.T) {
 			}(),
 			"refresh":  JellyfinRefreshItem(ctx, c, bad, "Default"),
 			"run task": JellyfinRunTask(ctx, c, bad),
+			"segments": func() error { _, err := JellyfinMediaSegments(ctx, c, bad); return err }(),
+			"markers":  func() error { _, err := JellyfinListEpisodeMarkers(ctx, c, bad, 0, 0); return err }(),
 			"parent": func() error {
 				_, err := JellyfinSearchItems(ctx, c, JellyfinItemQuery{ParentID: bad + "x"})
 				return err

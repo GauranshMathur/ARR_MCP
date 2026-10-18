@@ -22,6 +22,8 @@ var jellyfinReadTools = []string{
 	"jellyfin_list_users",
 	"jellyfin_list_tasks",
 	"jellyfin_activity_log",
+	"jellyfin_list_media_segments",
+	"jellyfin_list_episode_markers",
 }
 
 var jellyfinWriteTools = []string{
@@ -100,8 +102,8 @@ func TestJellyfinToolsAreAllAdvertisedWithTheirTier(t *testing.T) {
 			t.Errorf("%s: want a destructive tool, got %+v", name, tool)
 		}
 	}
-	if len(tools) != len(jellyfinReadTools)+len(jellyfinWriteTools)+len(jellyfinDestructiveTools) {
-		t.Errorf("jellyfin tools = %d, want 11: %v", len(tools), tools)
+	if want := len(jellyfinReadTools) + len(jellyfinWriteTools) + len(jellyfinDestructiveTools); len(tools) != want {
+		t.Errorf("jellyfin tools = %d, want %d: %v", len(tools), want, tools)
 	}
 	for _, name := range jellyfinReadTools {
 		if tool := tools[name]; tool == nil || !tool.Annotations.ReadOnlyHint {
@@ -239,6 +241,34 @@ func TestJellyfinGetItemToolReportsTheUserItUsed(t *testing.T) {
 		t.Errorf("result = %s", body)
 	}
 	if rec.lines[1] != "GET /Items/748950f8695760523d0361ea48e0953b?userId=0259b8b9ba6540c7b927ec98efa5c2da" {
+		t.Errorf("requests = %v", rec.lines)
+	}
+}
+
+func TestJellyfinMarkerToolsReachTheirEndpoints(t *testing.T) {
+	srv, rec := jellyfinUpstream(t, map[string]string{
+		"GET /MediaSegments/00cb39385fc82b4b4e9db35434770392": `{"Items":[{"Type":"Intro","StartTicks":1084000000,"EndTicks":12332320000}]}`,
+		"GET /Items": `{"TotalRecordCount":249,"StartIndex":24,"Items":[{"Id":"00cb39385fc82b4b4e9db35434770392","Name":"Pilot",
+		  "Type":"Episode","ParentIndexNumber":1,"IndexNumber":1,"Chapters":[{"StartPositionTicks":2438000000,"Name":"Intro"}]}]}`,
+	})
+	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
+
+	body := callJellyfin(t, cs, "jellyfin_list_media_segments", map[string]any{"itemId": "00cb39385fc82b4b4e9db35434770392"})
+	if !strings.Contains(body, `"itemId":"00cb39385fc82b4b4e9db35434770392"`) || !strings.Contains(body, `"count":1`) ||
+		!strings.Contains(body, `"startSeconds":108.4`) || !strings.Contains(body, `"endSeconds":1233.232`) {
+		t.Errorf("segments result = %s", body)
+	}
+
+	body = callJellyfin(t, cs, "jellyfin_list_episode_markers", map[string]any{
+		"parentId": "9993907cc9859aa5e0e31db2d60ce47a", "limit": 1, "startIndex": 24,
+	})
+	// The text content is re-encoded with sorted keys, so match fields, not order.
+	if !strings.Contains(body, `"totalCount":249`) || !strings.Contains(body, `"chapters":[{"name":"Intro","startSeconds":243.8}]`) ||
+		!strings.Contains(body, `"segments":[{"endSeconds":1233.232,"startSeconds":108.4,"type":"Intro"}]`) {
+		t.Errorf("markers result = %s", body)
+	}
+	if len(rec.lines) != 3 || !strings.Contains(rec.lines[1], "parentId=9993907cc9859aa5e0e31db2d60ce47a") ||
+		!strings.Contains(rec.lines[1], "limit=1") || !strings.Contains(rec.lines[1], "startIndex=24") {
 		t.Errorf("requests = %v", rec.lines)
 	}
 }
