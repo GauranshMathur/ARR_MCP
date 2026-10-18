@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.13.1...v1.14.0) (2026-10-18)
+
+
+### Features
+
+* **jellyfin:** add chapters, media segments and per-series skip markers ([de0b27c](https://github.com/GauranshMathur/ARR_MCP/commit/de0b27c432ce84c0dee8e28039bc0ff6fca62859))
+
 ## [1.13.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.13.0...v1.13.1) (2026-10-12)
 
 
