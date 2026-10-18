@@ -83,6 +83,12 @@ type JellyfinSegmentList struct {
 	Count    int                        `json:"count"`
 }
 
+// JellyfinPluginList wraps installed plugin builds.
+type JellyfinPluginList struct {
+	Plugins []arr.JellyfinPlugin `json:"plugins"`
+	Count   int                  `json:"count"`
+}
+
 // JellyfinTaskList wraps scheduled task results.
 type JellyfinTaskList struct {
 	Tasks []arr.JellyfinTask `json:"tasks"`

@@ -24,6 +24,7 @@ var jellyfinReadTools = []string{
 	"jellyfin_activity_log",
 	"jellyfin_list_media_segments",
 	"jellyfin_list_episode_markers",
+	"jellyfin_list_plugins",
 }
 
 var jellyfinWriteTools = []string{
@@ -270,6 +271,22 @@ func TestJellyfinMarkerToolsReachTheirEndpoints(t *testing.T) {
 	if len(rec.lines) != 3 || !strings.Contains(rec.lines[1], "parentId=9993907cc9859aa5e0e31db2d60ce47a") ||
 		!strings.Contains(rec.lines[1], "limit=1") || !strings.Contains(rec.lines[1], "startIndex=24") {
 		t.Errorf("requests = %v", rec.lines)
+	}
+}
+
+func TestJellyfinListPluginsToolDropsDescriptions(t *testing.T) {
+	srv, _ := jellyfinUpstream(t, map[string]string{
+		"GET /Plugins": `[{"Name":"Intro Skipper","Version":"12.0.5.0","Description":"Long text a plugin author wrote.",
+		  "Id":"c83d86bba1e04c35a113e2101cf4ee6b","CanUninstall":true,"HasImage":true,"Status":"Restart"}]`,
+	})
+	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
+
+	body := callJellyfin(t, cs, "jellyfin_list_plugins", nil)
+	if strings.Contains(body, "plugin author wrote") || strings.Contains(body, "hasImage") {
+		t.Errorf("description or image flag reached the client: %s", body)
+	}
+	if !strings.Contains(body, `"count":1`) || !strings.Contains(body, `"status":"Restart"`) || !strings.Contains(body, `"version":"12.0.5.0"`) {
+		t.Errorf("result = %s", body)
 	}
 }
 

@@ -21,6 +21,7 @@ are capped at 100 entries per call. See [Scope](../scope.md#jellyfin) for what i
 | `jellyfin_list_episode_markers` — every episode under a series or season with its chapters and media segments; paged, 25 by default | read |
 | `jellyfin_list_sessions` — who is connected and what is playing | read |
 | `jellyfin_list_users` — no policy or configuration | read |
+| `jellyfin_list_plugins` — every installed build with its version and load status (Active, Restart, Superseded, ...) | read |
 | `jellyfin_list_tasks` — state and last result | read |
 | `jellyfin_activity_log` — newest first, paged | read |
 | `jellyfin_scan_library` — every library, in the background | write |
