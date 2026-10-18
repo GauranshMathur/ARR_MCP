@@ -28,6 +28,7 @@ var jellyfinReadTools = []string{
 	"jellyfin_list_introskipper_segments",
 	"jellyfin_get_introskipper_analyzers",
 	"jellyfin_get_introskipper_scan_status",
+	"jellyfin_get_plugin_config",
 }
 
 var jellyfinWriteTools = []string{
@@ -392,6 +393,37 @@ func TestJellyfinIntroSkipperDestructiveToolsSayWhatTheyErase(t *testing.T) {
 				t.Errorf("%s description lacks %q: %s", tool.Name, phrase, tool.Description)
 			}
 		}
+	}
+}
+
+// A secret under a key that is not allowlisted must not reach the client, and a
+// plugin that is not allowlisted must not even be fetched.
+func TestJellyfinPluginConfigToolNeverReturnsSecrets(t *testing.T) {
+	srv, rec := jellyfinUpstream(t, map[string]string{
+		"GET /Plugins/f69e946a4b3c4e9a8f0a8d7c1b2c4d9b/Configuration": `{"AutoSkipIntro":true,"JellyseerrApiKey":"sk-live-0123456789"}`,
+		"GET /Plugins/958aad6637844d2ab89aa7b6fab6e25c/Configuration": `{"LdapBindPassword":"hunter2"}`,
+	})
+	cs := connect(t, jellyfinCfg(srv.URL, permsFull))
+
+	body := callJellyfin(t, cs, "jellyfin_get_plugin_config", map[string]any{"pluginId": "f69e946a4b3c4e9a8f0a8d7c1b2c4d9b"})
+	if strings.Contains(body, "sk-live") {
+		t.Errorf("a withheld secret reached the client: %s", body)
+	}
+	if !strings.Contains(body, `"AutoSkipIntro":true`) || !strings.Contains(body, `"withheld":["JellyseerrApiKey"]`) {
+		t.Errorf("result = %s", body)
+	}
+
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "jellyfin_get_plugin_config", Arguments: map[string]any{"pluginId": "958aad6637844d2ab89aa7b6fab6e25c"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if !res.IsError || strings.Contains(contentText(res), "hunter2") {
+		t.Errorf("isError=%v, text=%s; want a refusal without the password", res.IsError, contentText(res))
+	}
+	if len(rec.lines) != 1 {
+		t.Errorf("requests = %v; the LDAP configuration must never be fetched", rec.lines)
 	}
 }
 

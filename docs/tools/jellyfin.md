@@ -22,11 +22,27 @@ are capped at 100 entries per call. See [Scope](../scope.md#jellyfin) for what i
 | `jellyfin_list_sessions` — who is connected and what is playing | read |
 | `jellyfin_list_users` — no policy or configuration | read |
 | `jellyfin_list_plugins` — every installed build with its version and load status (Active, Restart, Superseded, ...) | read |
+| `jellyfin_get_plugin_config` — an allowlisted plugin's settings; other plugins are refused unread (see below) | read |
 | `jellyfin_list_tasks` — state and last result | read |
 | `jellyfin_activity_log` — newest first, paged | read |
 | `jellyfin_scan_library` — every library, in the background | write |
 | `jellyfin_refresh_item` — one item or library; never replaces existing metadata | write |
 | `jellyfin_run_task` — start a scheduled task now; some tasks (clean cache, logs, activity log) delete data | destructive |
+
+## Plugin settings
+
+`jellyfin_get_plugin_config` reads only plugins and keys on a fixed allowlist, because plugin
+settings hold credentials: on the server it was built against, Jellyfin Enhanced keeps Seerr,
+Sonarr, Radarr and TMDB keys among 299 settings, LDAP its bind password, and Trakt, SSO and
+Webhook theirs inside nested objects whose top-level names look harmless. Allowlisted: Intro
+Skipper (all 76 settings), Jellyfin Enhanced (11 skip and playback settings), InPlayerEpisodePreview,
+Jellyfin Tweaks and Subtitle Extract: their key names and value types were checked against the
+live server, though not every value was seen, and some are text an administrator types, such as
+Intro Skipper's exclusion lists and file paths. Any other plugin is refused before its settings
+are read.
+An allowlisted key is returned only while its value is a scalar or a list of scalars; keys left
+out are named under `withheld`, and a key a later plugin version adds stays withheld until it is
+listed in `pkg/arr/jellyfin_plugin_config.go`.
 
 ## Intro Skipper
 

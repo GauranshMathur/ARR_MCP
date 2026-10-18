@@ -60,6 +60,11 @@ moved from a server-wide to a per-season route in 12.0.5.0). Left out: erasing t
 or a whole season's results, the database rebuild, configuration reset, the per-episode
 disable flags, and the skip-button CSS endpoints.
 
+Plugin settings are the one settings endpoint in scope, and only through an allowlist of
+plugins and keys checked by hand (see [Jellyfin tools](tools/jellyfin.md#plugin-settings)):
+every other service's settings endpoint stays out because it returns credentials, and
+Jellyfin's plugin settings do too. No plugin setting can be changed.
+
 ## Jellystat
 
 Jellystat authenticates with the raw key in `X-Api-Token`, which is `AuthHeaderKey` with
