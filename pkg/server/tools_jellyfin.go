@@ -36,6 +36,59 @@ type JellyfinMarkersArgs struct {
 	StartIndex int    `json:"startIndex,omitempty" jsonschema:"offset of the first episode, for paging; defaults to 0"`
 }
 
+// JellyfinIntroSkipperSegmentsArgs identifies the item whose Intro Skipper
+// segments to list.
+type JellyfinIntroSkipperSegmentsArgs struct {
+	InstanceArg
+	ItemID            string `json:"itemId" jsonschema:"an episode or movie id from jellyfin_search_items"`
+	IncludeSuppressed bool   `json:"includeSuppressed,omitempty" jsonschema:"also list deleted detected segments, which jellyfin_restore_introskipper_segment can bring back"`
+}
+
+// JellyfinCreateSegmentArgs describes a hand-made Intro Skipper segment.
+type JellyfinCreateSegmentArgs struct {
+	InstanceArg
+	ItemID       string  `json:"itemId" jsonschema:"an episode or movie id from jellyfin_search_items"`
+	Type         string  `json:"type" jsonschema:"Introduction, Credits, Preview, Recap or Commercial: Intro Skipper's names, not Jellyfin's Intro and Outro"`
+	StartSeconds float64 `json:"startSeconds" jsonschema:"0 or more"`
+	EndSeconds   float64 `json:"endSeconds" jsonschema:"after startSeconds"`
+}
+
+// JellyfinUpdateSegmentArgs moves an Intro Skipper segment.
+type JellyfinUpdateSegmentArgs struct {
+	InstanceArg
+	ItemID       string  `json:"itemId" jsonschema:"the episode or movie the segment belongs to"`
+	SegmentID    string  `json:"segmentId" jsonschema:"segment id from jellyfin_list_introskipper_segments"`
+	StartSeconds float64 `json:"startSeconds" jsonschema:"0 or more"`
+	EndSeconds   float64 `json:"endSeconds" jsonschema:"after startSeconds"`
+}
+
+// JellyfinSegmentRefArgs identifies one Intro Skipper segment.
+type JellyfinSegmentRefArgs struct {
+	InstanceArg
+	ItemID    string `json:"itemId" jsonschema:"the episode or movie the segment belongs to"`
+	SegmentID string `json:"segmentId" jsonschema:"segment id from jellyfin_list_introskipper_segments"`
+}
+
+// JellyfinSeasonArgs identifies one season.
+type JellyfinSeasonArgs struct {
+	InstanceArg
+	SeasonID string `json:"seasonId" jsonschema:"a season id: jellyfin_search_items with includeItemTypes Season and the series as parentId"`
+}
+
+// JellyfinSetAnalyzersArgs chooses a season's analyzers.
+type JellyfinSetAnalyzersArgs struct {
+	InstanceArg
+	SeasonID string            `json:"seasonId" jsonschema:"a season id: jellyfin_search_items with includeItemTypes Season and the series as parentId"`
+	Actions  map[string]string `json:"actions" jsonschema:"segment type to analyzer, e.g. {\"Credits\":\"Chapter\"}. Types: Introduction, Credits, Preview, Recap, Commercial. Analyzers: Default, Chapter, Chromaprint, BlackFrame, None. Types not named keep theirs"`
+}
+
+// JellyfinScanSeasonArgs identifies the season to re-analyze.
+type JellyfinScanSeasonArgs struct {
+	InstanceArg
+	SeriesID string `json:"seriesId" jsonschema:"the series id"`
+	SeasonID string `json:"seasonId" jsonschema:"a season of that series: jellyfin_search_items with includeItemTypes Season and the series as parentId"`
+}
+
 // JellyfinActivityArgs pages jellyfin_activity_log.
 type JellyfinActivityArgs struct {
 	InstanceArg
@@ -81,6 +134,19 @@ type JellyfinSegmentList struct {
 	ItemID   string                     `json:"itemId"`
 	Segments []arr.JellyfinMediaSegment `json:"segments"`
 	Count    int                        `json:"count"`
+}
+
+// JellyfinIntroSkipperSegmentList wraps one item's Intro Skipper segments.
+type JellyfinIntroSkipperSegmentList struct {
+	ItemID   string                    `json:"itemId"`
+	Segments []arr.IntroSkipperSegment `json:"segments"`
+	Count    int                       `json:"count"`
+}
+
+// JellyfinIntroSkipperAnalyzers is a season's analyzer per segment type.
+type JellyfinIntroSkipperAnalyzers struct {
+	SeasonID string            `json:"seasonId"`
+	Actions  map[string]string `json:"actions" jsonschema:"segment type to the analyzer that finds it; Default follows the plugin's settings"`
 }
 
 // JellyfinPluginList wraps installed plugin builds.

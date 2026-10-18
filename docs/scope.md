@@ -53,6 +53,13 @@ and `GET /Items/{id}` rejects a request with no user, so `jellyfin_get_item` rea
 first enabled user unless told otherwise. Left out on purpose: user and permission
 management, playback control, item deletion (Maintainerr owns that) and server settings.
 
+The Intro Skipper plugin's own segment, analyzer and season-scan endpoints are covered, as
+the one plugin API in scope: it was needed to fix wrong skip markers, and it rides on
+Jellyfin's transport and key. Its version-to-version drift is handled per call (scan status
+moved from a server-wide to a per-season route in 12.0.5.0). Left out: erasing timestamps
+or a whole season's results, the database rebuild, configuration reset, the per-episode
+disable flags, and the skip-button CSS endpoints.
+
 ## Jellystat
 
 Jellystat authenticates with the raw key in `X-Api-Token`, which is `AuthHeaderKey` with

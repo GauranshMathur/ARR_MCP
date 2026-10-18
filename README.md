@@ -25,7 +25,7 @@
 ---
 
 - **Real MCP** — JSON-RPC 2.0 over stdio and Streamable HTTP, built on the official Go SDK
-- **326 tools** — what you would otherwise do by clicking through each web UI
+- **335 tools** — what you would otherwise do by clicking through each web UI
 - **Multi-instance** — run two Sonarrs (4K and 1080p) and address them by name
 - **Permission controls** — read-only, confirm-before-write, or full access
 - **Single static binary**, distroless container, multi-arch image
@@ -36,7 +36,7 @@
 |---|---|---|---|---|
 | [Sonarr](docs/tools/sonarr.md) | 77 | | [Maintainerr](docs/tools/maintainerr.md) | 25 |
 | [Radarr](docs/tools/radarr.md) | 73 | | [Seerr](docs/tools/seerr.md) | 17 |
-| [Bazarr](docs/tools/bazarr.md) | 33 | | [Jellyfin](docs/tools/jellyfin.md) | 14 |
+| [Bazarr](docs/tools/bazarr.md) | 33 | | [Jellyfin](docs/tools/jellyfin.md) | 23 |
 | [Prowlarr](docs/tools/prowlarr.md) | 23 | | [Jellystat](docs/tools/jellystat.md) | 10 |
 | [qBittorrent](docs/tools/qbittorrent.md) | 22 | | [Synology DSM](docs/tools/synology.md) | 14 |
 | [NZBGet](docs/tools/nzbget.md) | 18 | | | |
