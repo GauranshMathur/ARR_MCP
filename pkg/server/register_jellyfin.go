@@ -47,12 +47,35 @@ func registerJellyfin(s *Server) {
 
 	register(s, svc, spec, toolMeta{
 		name: "jellyfin_get_item",
-		description: "Show one Jellyfin item with its overview, genres, provider ids and one user's play " +
-			"state. Jellyfin needs a user to read an item as, so the first enabled user is used unless " +
+		description: "Show one Jellyfin item with its overview, genres, provider ids, chapters and one user's " +
+			"play state. Jellyfin needs a user to read an item as, so the first enabled user is used unless " +
 			"userId is given; the result names the user it used.",
 		access: AccessRead,
 	}, func(ctx context.Context, c *arr.Client, in JellyfinItemArgs) (arr.JellyfinItemDetail, error) {
 		return arr.JellyfinGetItem(ctx, c, in.ItemID, in.UserID)
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_list_media_segments",
+		description: "List one item's media segments: the Intro, Outro, Recap, Preview and Commercial spans " +
+			"that Jellyfin's skip buttons act on, in seconds. Plugins such as Intro Skipper write them; " +
+			"compare them with the chapters from jellyfin_get_item. An item with none, a missing episode " +
+			"included, returns an empty list.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinSegmentsArgs) (JellyfinSegmentList, error) {
+		segs, err := arr.JellyfinMediaSegments(ctx, c, in.ItemID)
+		return JellyfinSegmentList{ItemID: in.ItemID, Segments: segs, Count: len(segs)}, err
+	})
+
+	register(s, svc, spec, toolMeta{
+		name: "jellyfin_list_episode_markers",
+		description: "List the episodes under a series or season in season and episode order, each with its " +
+			"chapters and media segments in seconds, to check a whole show's skip markers at once. Returns " +
+			"a page plus totalCount; use startIndex to read further pages. Each episode on a page costs " +
+			"Jellyfin one extra request.",
+		access: AccessRead,
+	}, func(ctx context.Context, c *arr.Client, in JellyfinMarkersArgs) (arr.JellyfinEpisodeMarkersPage, error) {
+		return arr.JellyfinListEpisodeMarkers(ctx, c, in.ParentID, in.Limit, in.StartIndex)
 	})
 
 	register(s, svc, spec, toolMeta{

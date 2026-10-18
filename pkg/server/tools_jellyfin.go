@@ -22,6 +22,20 @@ type JellyfinItemArgs struct {
 	UserID string `json:"userId,omitempty" jsonschema:"user whose play state to report, from jellyfin_list_users; defaults to the first enabled user"`
 }
 
+// JellyfinSegmentsArgs identifies the item whose media segments to list.
+type JellyfinSegmentsArgs struct {
+	InstanceArg
+	ItemID string `json:"itemId" jsonschema:"an episode or movie id from jellyfin_search_items"`
+}
+
+// JellyfinMarkersArgs pages jellyfin_list_episode_markers.
+type JellyfinMarkersArgs struct {
+	InstanceArg
+	ParentID   string `json:"parentId" jsonschema:"a series or season id from jellyfin_search_items; every episode below it is listed"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"episodes per page; defaults to 25, at most 100"`
+	StartIndex int    `json:"startIndex,omitempty" jsonschema:"offset of the first episode, for paging; defaults to 0"`
+}
+
 // JellyfinActivityArgs pages jellyfin_activity_log.
 type JellyfinActivityArgs struct {
 	InstanceArg
@@ -60,6 +74,13 @@ type JellyfinSessionList struct {
 type JellyfinUserList struct {
 	Users []arr.JellyfinUser `json:"users"`
 	Count int                `json:"count"`
+}
+
+// JellyfinSegmentList wraps one item's media segments.
+type JellyfinSegmentList struct {
+	ItemID   string                     `json:"itemId"`
+	Segments []arr.JellyfinMediaSegment `json:"segments"`
+	Count    int                        `json:"count"`
 }
 
 // JellyfinTaskList wraps scheduled task results.

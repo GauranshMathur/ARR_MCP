@@ -1,7 +1,8 @@
 # Jellyfin tools
 
 What Jellyfin itself knows, as opposed to what the \*arr apps acquired: libraries and scan
-state, items as Jellyfin indexes them, who is connected and playing, users, scheduled tasks
+state, items as Jellyfin indexes them with their chapters and skip markers (media segments),
+who is connected and playing, users, scheduled tasks
 and the activity log. Output is trimmed hard; a Jellyfin item has over a hundred fields.
 Names set by users and devices are passed through verbatim and flagged in the output schema
 as data, not instructions, and the default `confirm` permission mode is the guard against
@@ -15,7 +16,9 @@ are capped at 100 entries per call. See [Scope](../scope.md#jellyfin) for what i
 | `jellyfin_system_info` — version, pending restart or update | read |
 | `jellyfin_list_libraries` — folders and scan state | read |
 | `jellyfin_search_items` — by name, type or library; paged, 25 by default | read |
-| `jellyfin_get_item` — overview, genres, provider ids and one user's play state | read |
+| `jellyfin_get_item` — overview, genres, provider ids, chapters and one user's play state | read |
+| `jellyfin_list_media_segments` — one item's Intro, Outro, Recap, Preview and Commercial spans, in seconds | read |
+| `jellyfin_list_episode_markers` — every episode under a series or season with its chapters and media segments; paged, 25 by default | read |
 | `jellyfin_list_sessions` — who is connected and what is playing | read |
 | `jellyfin_list_users` — no policy or configuration | read |
 | `jellyfin_list_tasks` — state and last result | read |
