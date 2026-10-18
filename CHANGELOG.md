@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.17.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.16.0...v1.17.0) (2026-10-18)
+
+
+### Features
+
+* **jellyfin:** add jellyfin_get_plugin_config behind a plugin and key allowlist ([eff8505](https://github.com/GauranshMathur/ARR_MCP/commit/eff8505209b373d2d5f48a59945044de00081187))
+
+
+### Bug Fixes
+
+* **jellyfin:** say that changing Intro Skipper analyzers re-analyzes the season ([ab50afd](https://github.com/GauranshMathur/ARR_MCP/commit/ab50afdb5146f2d533403d3b0fcfcc0e177a5b75))
+
 ## [1.16.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.15.0...v1.16.0) (2026-10-18)
 
 
