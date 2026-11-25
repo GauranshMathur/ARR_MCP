@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.18.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.17.0...v1.18.0) (2026-11-25)
+
+
+### Features
+
+* **permissions:** reads, creates and updates run by default; only deletes ask ([8109d31](https://github.com/GauranshMathur/ARR_MCP/commit/8109d31b3e49a0796a0499d08cedee43b838c009))
+
+
+### Documentation
+
+* **clients:** set up Claude Code so creates and updates run and deletes ask ([2cd54f2](https://github.com/GauranshMathur/ARR_MCP/commit/2cd54f28f88b618190eba7ec40c412715997d7b6))
+
 ## [1.17.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.16.0...v1.17.0) (2026-10-18)
 
 
