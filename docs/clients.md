@@ -84,7 +84,48 @@ current one, or `--scope project` to write it to a checked-in `.mcp.json`. Verif
 to inspect the tools.
 
 Claude Code supports MCP elicitation, so the default `confirm` permission mode prompts
-correctly here.
+when you are at the keyboard. Wherever nobody can answer the prompt, such as an unattended
+auto-mode session, `fallback: deny` refuses every write. See the next section.
+
+### Auto mode: create, read and update run unprompted, deletes ask you
+
+Let Claude Code's own permission system gate deletes instead of the server. The server then
+runs with `permissions.mode: full`, and `~/.claude/settings.json` lists which tools run
+freely and which always ask. The server is registered as `arr`, so its tools are named
+`mcp__arr__<tool>`; change the prefix if you registered it under another name.
+
+1. Set `permissions.mode: full` in the ARR-MCP config. The server stops prompting; Claude
+   Code decides.
+2. Generate the allow and ask lists from the server's own `readOnlyHint` /
+   `destructiveHint` annotations, so nothing is hand-typed. `destructiveHint` marks the
+   delete tools; the sleep keeps the server alive until it has answered:
+
+```bash
+(printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'; sleep 3) \
+| docker run -i --rm --env-file ~/.config/arr-mcp/env \
+    -v ~/.config/arr-mcp/config.yaml:/config/config.yaml:ro \
+    ghcr.io/gauranshmathur/arr-mcp:<version> --config /config/config.yaml --transport stdio \
+| jq -s '{permissions: {
+    allow: ([.[] | select(.id==2).result.tools[] | select(.annotations.destructiveHint | not) | "mcp__arr__" + .name] | sort),
+    ask:   ([.[] | select(.id==2).result.tools[] | select(.annotations.destructiveHint)       | "mcp__arr__" + .name] | sort)}}'
+```
+
+3. Merge the `permissions` object into `~/.claude/settings.json`. Regenerate it after you
+   upgrade ARR-MCP: a tool the lists do not name falls back to Claude Code's default prompt.
+
+What this does, checked against Claude Code 2.1.325 with auto mode on:
+
+- An allowed tool runs without a prompt.
+- A tool with an `ask` rule prompts even in auto mode ("Ask rule … overrides auto mode"),
+  with Yes, "Yes, and don't ask again" and No.
+- "Don't ask again" does not stick for an `ask` rule: it saves an allow rule for the
+  project, but the ask rule still wins, so the tool prompts again. Claude Code offers no
+  per-session approval for MCP tools.
+- Without an `ask` rule, auto mode's classifier decided on its own and let a delete tool
+  run with no prompt at all. Keep the `ask` list if deletes must always reach you.
 
 ## Claude Desktop
 
