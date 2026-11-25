@@ -17,11 +17,11 @@ Subtitle management, including two instances if you run one per Sonarr/Radarr pa
 | `bazarr_download_episode_subtitle`, `bazarr_download_movie_subtitle` — one named search result | write |
 | `bazarr_set_series_profile`, `bazarr_set_movie_profile` — assign a languages profile | write |
 | `bazarr_series_action`, `bazarr_movie_action` — scan-disk, search-missing, search-wanted | write |
-| `bazarr_modify_subtitle` — sync, translate, remove_HI and the other mods | write |
 | `bazarr_reset_providers`, `bazarr_run_task` | write |
 | `bazarr_delete_episode_subtitle`, `bazarr_delete_movie_subtitle` | destructive |
 | `bazarr_blacklist_subtitle` — deletes the file, then searches for a replacement | destructive |
 | `bazarr_delete_blacklist_item` | destructive |
+| `bazarr_modify_subtitle` — rewrites the subtitle file in place (sync, translate, remove_HI and the other mods) | destructive |
 
 The automatic search tools report success whether or not a provider had a
 match, because that is all Bazarr tells them. `bazarr_manual_search_episode`

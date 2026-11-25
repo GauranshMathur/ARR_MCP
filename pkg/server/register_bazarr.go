@@ -401,8 +401,8 @@ func registerBazarr(s *Server) {
 			"it to another language, or apply a mod (remove_HI strips hearing-impaired text, " +
 			"remove_tags strips formatting, OCR_fixes, common, fix_uppercase, reverse_rtl). " +
 			"Take path from bazarr_list_episode_subtitles and a sync reference such as a:0 from " +
-			"bazarr_subtitle_info. Rewrites the file, so a bad result means re-downloading.",
-		access: AccessWrite,
+			"bazarr_subtitle_info. Destructive: rewrites the file, so a bad result means re-downloading.",
+		access: AccessDestructive,
 	}, func(ctx context.Context, c *arr.Client, in ModifySubtitleArgs) (Requested, error) {
 		err := arr.BazarrModifySubtitle(ctx, c, arr.SubtitleMod{
 			Action: in.Action, Language: in.Language, Path: in.Path,
