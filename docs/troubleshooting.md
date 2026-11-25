@@ -55,27 +55,29 @@ failed.
 - If only the *write* tools are missing, that is `permissions.mode: readonly` doing its
   job — read-only mode does not register them at all.
 
-## Writes are refused without ever prompting
+## Deletes are refused without ever prompting
 
 ```
-client does not support elicitation: cannot confirm write tool sonarr_add_series;
+client does not support elicitation: cannot confirm destructive tool sonarr_delete_series;
 set permissions.fallback=allow or permissions.mode=full to permit it
 ```
 
-The default `confirm` mode asks for approval through MCP elicitation, and your client does
-not implement it. There is no prompt to answer, so the call fails closed rather than
-running unapproved — see [Permissions](permissions.md) for why that default is the safe one.
-Either switch to a client that supports elicitation, or make the decision explicit:
+By default reads, creates and updates run without asking and deletes ask for approval
+through MCP elicitation. Your client does not implement it (or nobody is there to answer,
+as in an unattended session), so there is no prompt to answer and the call fails closed
+rather than running unapproved — see [Permissions](permissions.md) for why that default is
+the safe one. Either use a client that supports elicitation, or make the decision explicit:
 
 ```yaml
 permissions:
   mode: confirm
-  confirmScope: destructive   # only deletes need confirming
-  fallback: allow             # writes proceed unprompted
+  confirmScope: destructive   # only deletes need confirming (the default)
+  fallback: allow             # deletes proceed unprompted
 ```
 
-`confirmScope: destructive` is usually the better trade: adds and command triggers run
-freely, and the calls that remove things still fail closed.
+The same message naming a *write* tool means `confirmScope: write` is set, so every
+change asks first. Set it back to `destructive` to let adds and command triggers run
+freely.
 
 ## The server starts, then exits immediately under stdio
 

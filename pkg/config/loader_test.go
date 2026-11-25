@@ -146,7 +146,7 @@ services:
 	}
 }
 
-func TestLoadDefaultsPermissionsToConfirmWriteDeny(t *testing.T) {
+func TestLoadDefaultsPermissionsToConfirmDeletesDeny(t *testing.T) {
 	p := writeCfg(t, `
 services:
   sonarr:
@@ -163,8 +163,8 @@ services:
 	if perms.Mode != ModeConfirm {
 		t.Errorf("Mode = %q, want %q", perms.Mode, ModeConfirm)
 	}
-	if perms.ConfirmScope != ScopeWrite {
-		t.Errorf("ConfirmScope = %q, want %q", perms.ConfirmScope, ScopeWrite)
+	if perms.ConfirmScope != ScopeDestructive {
+		t.Errorf("ConfirmScope = %q, want %q", perms.ConfirmScope, ScopeDestructive)
 	}
 	if perms.Fallback != FallbackDeny {
 		t.Errorf("Fallback = %q, want %q", perms.Fallback, FallbackDeny)

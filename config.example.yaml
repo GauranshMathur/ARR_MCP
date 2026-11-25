@@ -25,9 +25,10 @@ permissions:
   # confirm  - mutating tools ask the user before running (default)
   # full     - everything runs immediately
   mode: confirm
-  # Which tiers require confirmation under `confirm`: write (includes
-  # destructive) or destructive (deletes only).
-  confirmScope: write
+  # Which tiers require confirmation under `confirm`: destructive (deletes
+  # only, the default: reads, creates and updates run without asking) or write
+  # (includes destructive: every change asks first).
+  confirmScope: destructive
   # What to do when the MCP client cannot prompt the user. `deny` fails closed,
   # so a client lacking elicitation support never gets silent write access.
   # Set `allow` only deliberately: it turns `confirm` into `full` for any such

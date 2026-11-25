@@ -18,12 +18,12 @@ data:
       logLevel: info
 
     permissions:
-      # Most MCP clients reaching a shared in-cluster server cannot prompt the
-      # user, and `fallback: deny` then refuses every write. That is the correct
-      # default, but it means a shared deployment is effectively read-only
-      # unless you decide otherwise here.
+      # Reads, creates and updates run; deletes ask first. Most MCP clients
+      # reaching a shared in-cluster server cannot prompt the user, and
+      # `fallback: deny` then refuses every delete. That is the correct default;
+      # decide otherwise here only deliberately.
       mode: confirm
-      confirmScope: write
+      confirmScope: destructive
       fallback: deny
 
     services:

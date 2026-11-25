@@ -27,11 +27,12 @@ const (
 // Scope selects which access tiers require confirmation under ModeConfirm.
 type Scope string
 
-// Supported confirmation scopes.
+// Supported confirmation scopes. ScopeDestructive is the default: reads,
+// creates and updates run, and only deletes ask first.
 const (
 	// ScopeWrite confirms both write and destructive tools.
 	ScopeWrite Scope = "write"
-	// ScopeDestructive confirms only destructive tools.
+	// ScopeDestructive confirms only destructive tools. This is the default.
 	ScopeDestructive Scope = "destructive"
 )
 
@@ -120,7 +121,7 @@ func expandEnv(field, value string) (string, error) {
 func Load(path string) (*Config, error) {
 	c := &Config{
 		Server:      ServerConfig{Transport: "stdio", Addr: "0.0.0.0:8080", LogLevel: "info"},
-		Permissions: Permissions{Mode: ModeConfirm, ConfirmScope: ScopeWrite, Fallback: FallbackDeny},
+		Permissions: Permissions{Mode: ModeConfirm, ConfirmScope: ScopeDestructive, Fallback: FallbackDeny},
 		Services:    map[string][]Instance{},
 	}
 
@@ -318,7 +319,7 @@ func validatePermissions(p *Permissions, field string) error {
 
 	switch p.ConfirmScope {
 	case "":
-		p.ConfirmScope = ScopeWrite
+		p.ConfirmScope = ScopeDestructive
 	case ScopeWrite, ScopeDestructive:
 	default:
 		return fmt.Errorf("%s.confirmScope: unknown scope %q; want one of: %s, %s",
