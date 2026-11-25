@@ -5,27 +5,29 @@ Mutating tools are gated by policy:
 ```yaml
 permissions:
   mode: confirm        # readonly | confirm | full
-  confirmScope: write  # write | destructive
+  confirmScope: destructive  # destructive | write
   fallback: deny       # deny | allow
 ```
 
 | Mode | Behaviour |
 |---|---|
 | `readonly` | Only read tools are registered. Mutating tools are invisible to the client. |
-| `confirm` | Mutating tools ask the user first, via MCP elicitation. **Default.** |
+| `confirm` | Tools in the `confirmScope` ask the user first, via MCP elicitation. **Default.** |
 | `full` | Everything runs immediately. |
 
-`confirmScope` selects what gets confirmed: `write` covers both writes and deletes,
-`destructive` covers deletes only.
+`confirmScope` selects what gets confirmed under `confirm`: `destructive` (**default**)
+covers deletes only, so reads, creates and updates run without asking; `write` covers
+writes and deletes, so every change asks first.
 
 `fallback` decides what happens when the client **cannot** prompt. Confirmation is
 delivered over MCP elicitation, which a client must advertise support for during
 initialisation, and many clients still don't. The default `deny` fails closed, because the
 alternative is worse than it looks: without it, connecting a client that lacks elicitation
-would quietly downgrade `confirm` mode into `full` — you would believe every write was
-being approved while none of them ever were. Setting `allow` grants that unprompted write
-access deliberately, which is a reasonable choice for a trusted local client but should be
-a decision, not an accident.
+would quietly downgrade `confirm` mode into `full` — you would believe every delete was
+being approved while none of them ever were. With the default scope, a client that cannot
+prompt can still read, create and update, and its deletes are refused. Setting `allow`
+lets those calls run unprompted, which is a reasonable choice for a trusted local client
+but should be a decision, not an accident.
 
 Any instance can override the global policy:
 

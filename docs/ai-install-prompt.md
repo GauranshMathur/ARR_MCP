@@ -61,7 +61,10 @@ Ask these together, in one message, and wait:
 1. Which of Sonarr, Radarr, Prowlarr, Bazarr do you run, and at what URL each?
    (Defaults if they're unsure: Sonarr 8989, Radarr 7878, Prowlarr 9696, Bazarr 6767.)
 2. Do you run more than one of any of them? If so, what should each be called?
-3. Should the server be allowed to make changes — add and delete media — or read only?
+3. What may the server do? Tell the user the DEFAULT before they answer: it can read, add
+   and update without asking, and it asks them before it deletes anything. Offer the
+   alternatives: read only; ask before every change; or everything unprompted (only for a
+   trusted local setup). If they say nothing, keep the default.
 4. Docker, or a local binary? Recommend Docker unless they already have Go 1.26+.
 
 Do not ask for API keys. Tell them where to paste keys themselves:
@@ -96,7 +99,7 @@ MORE THAN ONE instance of any service → config.yaml is required:
 
   permissions:
     mode: confirm             # readonly | confirm | full
-    confirmScope: write       # write | destructive
+    confirmScope: destructive # destructive (default: only deletes ask) | write
     fallback: deny            # deny | allow
 
   services:
@@ -159,6 +162,12 @@ You can run this yourself. Confirm with the user first, then execute:
 Verify with: claude mcp list
 Note: do not put --env-file after the image name, and do not use Claude Code's own --env
 flag immediately before the server name — it is parsed as another KEY=value.
+Tell the user what this setup allows: by default Claude can read, add and update, and the
+server asks before any delete. Deletes always reach them, because the server asks itself.
+If they run Claude Code in auto mode and want Claude's own permission prompt for deletes
+too (with "don't ask again" options), point them to docs/clients.md, "Auto mode: create,
+read and update run unprompted, deletes ask you". Do not edit their Claude settings without
+asking.
 
 ### Claude Desktop
 Edit claude_desktop_config.json (Settings → Developer → Edit Config opens it):
@@ -266,6 +275,11 @@ any instance failed.
 
 Then restart the client and confirm tools named sonarr_*, radarr_*, prowlarr_* or bazarr_*
 appear. A good smoke test is asking it to list Sonarr series.
+
+Finish by telling the user, in two or three lines, what the server can do now (reads, adds
+and updates run without asking; deletes ask first; a client that cannot prompt gets deletes
+refused) and which setting changes that (`permissions` in the config, see
+docs/permissions.md). Do not skip this: they are handing an AI full access to their stack.
 
 ────────────────────────────────────────────────────────────────────────
 STEP 7 — IF SOMETHING IS WRONG

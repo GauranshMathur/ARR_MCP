@@ -30,6 +30,21 @@
 - **Permission controls** — read-only, confirm-before-write, or full access
 - **Single static binary**, distroless container, multi-arch image
 
+> **Read this before you connect it.** Every API key you give ARR-MCP is full access to that
+> application, and your AI client will use it. What is allowed **by default**:
+>
+> | | Default |
+> |---|---|
+> | **Read** (list, search, status) | runs without asking |
+> | **Create and update** (add a series, change a profile, trigger a search, rename) | runs **without asking** |
+> | **Delete** (series, movies, files, queue items, torrents, NAS files) | **asks you first**; a client that cannot prompt has the delete refused |
+> | **Synology file changes** (create folder, rename, copy/move) | refused until you list folders in `allowedPaths` |
+>
+> Want every change to ask first, nothing to change at all, or everything unprompted? Edit
+> the `permissions` block of your config: [what to change](#permissions). Earlier releases
+> asked before every change; if you are upgrading and want that back, set
+> `confirmScope: write`.
+
 ## Supported services
 
 | Service | Tools | | Service | Tools |
@@ -107,7 +122,9 @@ claude mcp add arr -- docker run -i --rm --env-file /absolute/path/to/.env \
   ghcr.io/gauranshmathur/arr-mcp --transport stdio
 ```
 
-That is the whole setup. [docs/clients.md](docs/clients.md) has copy-pasteable blocks for
+That is the whole setup. Nothing else is needed to stay on the default described in the
+note at the top: your assistant can read, add and update, and must ask you
+before it deletes. [docs/clients.md](docs/clients.md) has copy-pasteable blocks for
 Claude Desktop, Cursor, VS Code, Windsurf, Zed, Cline, Roo Code, Continue.dev, LibreChat,
 Goose and anything else that speaks MCP.
 
@@ -130,13 +147,24 @@ repository, `docker compose up -d` does the same thing.
 
 ## Permissions
 
-Every credential you hand ARR-MCP is full access to that application, so mutating tools are
-gated by a policy. The default, `confirm`, asks you before any write or delete; `readonly`
-hides mutating tools from the client entirely; `full` runs everything immediately. Any
-instance can override the global policy. If writes are refused without a prompt, your client
-does not support MCP elicitation: see [docs/permissions.md](docs/permissions.md) for the
-`fallback` and `confirmScope` settings.
+Every credential you hand ARR-MCP is full access to that application, so changes are gated
+by a policy. **By default** reads, creates and updates run without asking and deletes ask
+you first. To change that, set `permissions` in your config file (or run with `--config`):
 
+| You want | Set |
+|---|---|
+| The default: only deletes ask | `mode: confirm`, `confirmScope: destructive` |
+| Every change asks first | `mode: confirm`, `confirmScope: write` |
+| Nothing can change anything | `mode: readonly` (mutating tools are hidden from the client) |
+| Everything runs unprompted | `mode: full` (only on a trusted, local setup) |
+| Deletes allowed where nobody can answer a prompt | `fallback: allow` |
+
+A delete asks through MCP elicitation, which not every client supports. Where there is
+nobody to answer (a client without elicitation, an unattended session) the delete is
+**refused**, not silently allowed, unless you set `fallback: allow`. Any instance can
+override the global policy. Details: [docs/permissions.md](docs/permissions.md). Claude Code
+users can also let Claude's own permission prompt handle deletes:
+[docs/clients.md](docs/clients.md#auto-mode-create-read-and-update-run-unprompted-deletes-ask-you).
 
 ## Connecting a client
 

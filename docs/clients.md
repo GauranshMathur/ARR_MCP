@@ -84,14 +84,16 @@ current one, or `--scope project` to write it to a checked-in `.mcp.json`. Verif
 to inspect the tools.
 
 Claude Code supports MCP elicitation, so the default `confirm` permission mode prompts
-when you are at the keyboard. Wherever nobody can answer the prompt, such as an unattended
-auto-mode session, `fallback: deny` refuses every write. See the next section.
+for deletes (the default `confirmScope: destructive`: reads, creates and updates run
+without asking). Wherever nobody can answer the prompt, such as an unattended auto-mode
+session, `fallback: deny` refuses the delete. See the next section for letting Claude
+Code's own prompt handle deletes.
 
 ### Auto mode: create, read and update run unprompted, deletes ask you
 
-Let Claude Code's own permission system gate deletes instead of the server. The server then
-runs with `permissions.mode: full`, and `~/.claude/settings.json` lists which tools run
-freely and which always ask. The server is registered as `arr`, so its tools are named
+Optional. By default the server itself asks before a delete. To let Claude Code's own
+permission prompt do that instead, the server runs with `permissions.mode: full` and
+`~/.claude/settings.json` lists which tools run freely and which always ask. The server is registered as `arr`, so its tools are named
 `mcp__arr__<tool>`; change the prefix if you registered it under another name.
 
 1. Set `permissions.mode: full` in the ARR-MCP config. The server stops prompting; Claude
