@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.1](https://github.com/GauranshMathur/ARR_MCP/compare/v1.18.0...v1.18.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **permissions:** gate tag removal and in-place subtitle edits as destructive ([c079331](https://github.com/GauranshMathur/ARR_MCP/commit/c0793316ac002b061a0aaace4cef1ac071ee7768))
+
 ## [1.18.0](https://github.com/GauranshMathur/ARR_MCP/compare/v1.17.0...v1.18.0) (2026-11-25)
 
 
