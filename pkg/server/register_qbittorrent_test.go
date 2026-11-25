@@ -20,12 +20,12 @@ var qbitToolNames = map[Access][]string{
 	AccessWrite: {
 		"qbittorrent_add_torrent", "qbittorrent_stop_torrents", "qbittorrent_start_torrents",
 		"qbittorrent_recheck_torrents", "qbittorrent_set_category", "qbittorrent_create_category",
-		"qbittorrent_edit_category", "qbittorrent_add_tags", "qbittorrent_remove_tags",
+		"qbittorrent_edit_category", "qbittorrent_add_tags",
 		"qbittorrent_set_location", "qbittorrent_rename_torrent", "qbittorrent_set_priority",
 		"qbittorrent_set_torrent_limits", "qbittorrent_set_global_limits",
 	},
 	AccessDestructive: {
-		"qbittorrent_delete_torrents", "qbittorrent_delete_categories",
+		"qbittorrent_delete_torrents", "qbittorrent_delete_categories", "qbittorrent_remove_tags",
 	},
 }
 

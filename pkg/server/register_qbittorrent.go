@@ -153,8 +153,9 @@ func registerQBittorrent(s *Server) {
 	register(s, svc, spec, toolMeta{
 		name: "qbittorrent_remove_tags",
 		description: "Strip tags from torrents; omit tags to strip every tag they carry. " +
+			"Destructive: the removed tags are not recorded anywhere. " +
 			"Takes hashes from qbittorrent_list_torrents, or [\"all\"].",
-		access: AccessWrite,
+		access: AccessDestructive,
 	}, func(ctx context.Context, c *arr.Client, in TorrentTagsArgs) (TorrentActionResult, error) {
 		if err := arr.QBittorrentRemoveTags(ctx, c, in.Hashes, in.Tags); err != nil {
 			return TorrentActionResult{}, err
